@@ -1,0 +1,18 @@
+
+//sequental logic
+
+seq counterA <metanum n> (bit in)->([n] out):
+	state s([n] count):
+		if (in):
+			next s(count + 1):
+				out = count + 1
+ 
+
+seq countderB <metanum n> (bit in)->([n] out):
+	state s([n] count):
+		if (in):
+			out = count
+			next s(count+1): pass
+
+
+

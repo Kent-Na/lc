@@ -1,0 +1,20 @@
+
+
+module memory 
+<
+	metanum	address_width,
+	metanum data_width
+>:
+	clock:
+		main_clock
+	io (clock = main_clock):
+		in [address_width] address
+		out [data_width] data
+
+
+
+module sbf_core:
+
+	io
+	logic:
+		

@@ -1,0 +1,29 @@
+func FA (bit A, bit B, bit Cin) -> (bit O, bit Cout):
+	//some code here	
+
+//full adder vector
+func FAV <metanum n> ([n] A, [n] B, bit Cin) ->
+	([n] O, bit Cout):
+	FA fa
+	FAV<n-1> fav
+
+	{fa.A, fav.A} = A
+	{fa.B, fav.B} = B
+	O = {fa.O, fav.O}
+
+	fav.Cin = Cin
+	fa.Cin = fav.Cout
+	Cout = fa.Cout
+
+func FAV_ARRAY <metanum n> ([n] A, [n] B, bit Cin) ->
+	([n] O, bit Cout):
+	
+	FA[n] fa
+	fa.A = A
+	fa.B = B
+
+	Cout = fa.[n-1].Cout
+	fa.Cin = {fa.Cout[n-1:], Cin}
+
+	O = fa.O
+

@@ -1,0 +1,38 @@
+
+
+//comment
+
+//number
+
+//integer
+1
+30
+599
+
+//integer with bit width
+
+1'1
+10'400
+1'45 //error
+
+////
+//function definition
+func function_name <template_parameters> input -> output:
+	body
+
+////
+//bit concatinate
+
+{1'1, 1'0} //2'10
+
+//include capital letter cause compile error
+
+////
+//state machine
+seq machine_name <template_parameters> input -> output:
+	state state_name_1 (state_parameters) initial (param):
+		state_body //apply at current clock
+		next next_state_name(param):
+			body //apply at next clock
+	state state_name_2 (state_parameters):
+		state_body //apply at current clock
