@@ -1,20 +1,90 @@
 
 
-module memory 
-<
+module memory <
 	metanum	address_width,
-	metanum data_width
->:
-	clock:
-		main_clock
+	metanum data_width>:
+
+	clock main_clock
 	io (clock = main_clock):
 		in [address_width] address
-		out [data_width] data
+		io [data_width] data
 
 
+module brain_f__c:
+	memory<4,8> i_mem
+	memory<8,8> d_mem
 
-module sbf_core:
+	reg[4] i_addr;
+	reg[8] d_addr;
 
-	io
-	logic:
-		
+	enum instruction [4]:
+		inc_data
+		dec_data
+		inc_addr
+		dec_addr
+
+		jump_back
+		jump_front
+
+		input
+		output
+
+	on +clock:
+		instruction instruction = i_mem.data
+	
+	auto data = d_mem.data
+
+	seq(+clock):		
+	state exec():
+		select instruction:
+		case inc_data:
+			i_addr++
+			d_mem.write(d_mem.d_out+1)	
+		case dec_data:
+			i_addr++
+			d_mem.write(d_mem.d_out-1)	
+		case inc_addr:
+			i_addr++
+			d_addr++
+		case dec_addr:
+			i_addr++
+			d_addr--
+		case jump_back:
+			if not data:
+				i_addr--
+				next jump_back(1)
+			else:
+				i_addr++
+		case jump_front:
+			i_addr++
+			if data:
+				next jump_front(1);
+		case input:
+			i_addr++
+			next input
+		case output:
+			i_addr++
+			next output 
+	state jump_back(level):
+		if instruction == jump_back:
+			i_addr--
+			next(level+1)
+		if instruction == jump_front:
+			if level == 1:
+				i_addr++
+				next exec();
+			else:
+				i_addr--
+				next (level-1);
+
+	state jump_front(level):
+		if instruction == jump_front:
+			i_addr++
+			next(level+1)
+		if instruction == jump_back:
+			if level == 1:
+				i_addr++
+				next exec();
+			else:
+				i_addr++
+				next (level-1);

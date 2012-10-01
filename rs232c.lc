@@ -1,0 +1,44 @@
+
+interface output_unit:
+	in [8] data_in
+	in data_enable
+	out busy 
+
+interface output_unit:
+	out [8] data_out
+	in data_enable
+	out busy 
+
+
+module RS232C_output<freq clockFreq>(output_unit):
+
+	// io, shouldn't here
+	in clock
+	in input_enable
+	in [8] data
+	out o_signal
+	out busy
+
+	freq serialFreq = 119.2kHz
+
+	//gen serial clock
+	metanum require_clock = serialFreq/clockFreq
+
+	//todo: how to set initial value of these?
+	[metanum.bitwidth(require_clock)] counter 
+	bit do_shift = (counter == require_clock)
+	[10] shift_register
+	[4] bit_counter //count of bits did not send in shift_register
+
+	on + clock:
+		if do_shift:
+			counter = 0;
+		else:
+			counter ++
+
+		if input_enable
+			shift_register = {data,2'b01}
+			bit_counter = 4'11
+		else if do_shift:
+			shift_register = {1'b1, shift_register[9:1]}
+			bit_counter --;

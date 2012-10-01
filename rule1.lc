@@ -4,16 +4,29 @@
 
 //number
 
-//integer
+//integer(metanum)
 1
 30
 599
 
-//integer with bit width
+//integer with bit width (bit[n])
 
-1'1
-10'400
+1'1//ok
+10'400//ok
 1'45 //error
+
+////
+//bit concatinate
+
+{1'1, 1'0} //2'10
+
+////
+//types
+
+bit = 0|1|x|z
+[n] = bit[n];
+
+//include capital letter cause compile error
 
 ////
 //function definition
@@ -21,17 +34,35 @@ func function_name <template_parameters> input -> output:
 	body
 
 ////
-//bit concatinate
+//function usage
 
-{1'1, 1'0} //2'10
+// c lang like call
+outputs = function_name(inputs)
 
-//include capital letter cause compile error
+// hdl like call (use as module)
+function_name instance_name(inputs) // set input
+outputs = instance_name
+
+// compose
+inputs->function_name_1->function_name_2->outputs//if possible...
+outputs = function_name_2(function_name_1(inputs))
+
+//assign
+= // right to left
+<- // same as '='
+-> // left to right
+
+//operater
++ //add
+- //sub
+* //mul
+/ //div
 
 ////
-//state machine
+//state machine(sync)
 seq machine_name <template_parameters> input -> output:
 	state state_name_1 (state_parameters) initial (param):
-		state_body //apply at current clock
+		state_body //apply at begining of current clock
 		next next_state_name(param):
 			body //apply at next clock
 	state state_name_2 (state_parameters):
