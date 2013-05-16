@@ -1,0 +1,246 @@
+
+
+//note: There are 3 functions HDL have. Simulate, Generate, Describe.
+
+// Line comment
+
+/* Multi line comment */
+
+/+ Nestable multi line comment. (from D language) +/
+
+//number
+
+//integer(metanum)
+//These are not concatinatable with other data.
+1
+30
+599
+
+
+//integer with bit width (bit[n])
+
+1'1//ok
+10'400//ok
+1'45 //error
+
+10'b10//binaly
+10'd90//decimal
+10'o72//oct
+24'hBeef20//hex
+
+//(bin, hex and oct)integer can contain any number of underbar for visibility.
+
+8'b0110_11__10 // = 8'b01101110
+
+////
+//types
+
+bit = 0|1
+logic = 0|1|x|z
+bit[n] //n bit array
+
+metanum //143
+metastr //"text"
+metatime //4s 4ns 4ms ...
+metafreq //10Hz 10MHz 5KHz
+
+auto //(from c++11)
+
+//cast rule
+
+// meta_num -> bit
+// bit -> logic
+
+////
+//scope
+//just variable scope
+scope{
+	body
+}
+
+////
+//function definition
+
+//note: [Q]Can functions have multipul output?
+//note: [A]Use struct!!
+
+function_name : func input_1 -> input_2 -> input_n -> output{
+	body
+}
+
+////
+//struct definition
+
+//struct can contain meta value
+
+struct_name : struct{
+	fields
+}
+
+//template struct with func
+struct_template_name : func params->struct{
+	return struct{
+		//fields
+	}
+}
+
+//syntax suger. It reduce nest level by 1.
+struct_template_name : func params=>struct{
+	//fields
+}
+
+////
+//function usage
+
+// c lang style call
+outputs = function_name(inputs)
+
+// hdl style call (use as module)
+function_name instance_name(inputs) // set input
+outputs = instance_name
+
+//lisp style call
+outputs = (function_name inputs)
+
+// compose
+//inputs->function_name_1->function_name_2->outputs//if possible...
+outputs = function_name_2(function_name_1(inputs))
+
+//////////
+//operaters
+//
+
+//field access
+a.b
+
+//bit concatinate
+{1'1, 1'0} //2'10
+
+//field concatinate
+instance_name.{field_name_1, field_name_2}
+
+//array access
+a[12]
+a[4:8] // = {a[4],a[5],a[6],a[7]}
+a[4,8] // = {a[4],a[8]}
+a[4:6,8] // = {a[4],a[5],a[8]}
+
+//assign
+= // right to left
+<- // same as '='
+-> // left to right
+<-(metatime) //delayed assign
+
+a <-(5ns) 1'b0;
+
+//operater
++ //add
+- //sub
+* //mul
+/ //div
+
+& //and
+| //or
+^ //xor
+
+////
+//module(state less)
+
+module_name : module{
+	in type name;
+	out type name;
+}
+	
+//std io module
+
+io : module{
+	in bit input;
+	out logic output;
+}
+
+//std external_io module
+
+external_io : func metastr loc -> module{
+	module{
+		bit bit output;
+	}
+}
+
+
+//std clock module
+clock_gen : func metafreq fq -> module{
+	module{
+		out bit clock;
+	}
+}
+
+////
+//state machine(sync)
+
+//note: What we needs are
+//input
+//output
+//state
+//clock
+
+//note: how to nest state machine?
+//note: how to instantiate it?
+//note: how to eliminate "reg"?
+//note: how to access state of machine?
+//note: how to determinate initial state?
+
+
+state_machine : module{
+	bit clock;
+	enumish_type state;
+}
+
+machine_name : seq{
+	state_name_0 : state{
+
+	}
+	state_name_1 : func param -> state{
+		state{
+
+		}
+	}
+
+
+	//dead
+	state_name_1 : state (state_parameters) initial (param){
+		state_body //apply at begining of current clock
+		next next_state_name(param):
+			body //apply at next clock
+	}
+	//also dead
+	state_name_2 : state (state_parameters){
+		state_body //apply at current clock
+	}
+}
+
+//note: pattern mach?
+
+//wild card "_"
+
+//note: can we use wild carded parameter value?
+if machine.state is state_name(12xa03, _, _, 12){
+
+}
+machine.state on state_0 -> state_1{
+
+}
+
+////
+//good old way. (or not?)
+
+name : reg bit;
+name : ratch bit;
+
+//on statement works like "always" of verilogHDL.
+on +clock{
+	//use reg here
+}
+
+while signal{
+	//use ratch here
+}

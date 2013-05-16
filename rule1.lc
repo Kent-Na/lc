@@ -5,9 +5,11 @@
 //number
 
 //integer(metanum)
+//These are not concatinatable with other data.
 1
 30
 599
+
 
 //integer with bit width (bit[n])
 
@@ -15,33 +17,60 @@
 10'400//ok
 1'45 //error
 
-////
-//bit concatinate
+10'b10//binaly
+10'd90//d
+10'o72//oct
+24'hBeef20//hex
 
-{1'1, 1'0} //2'10
+//(bin, hex and oct)integer can contain any number of underbar for visibility.
+
+8'b0110_11__10 // = 8'b01101110
 
 ////
 //types
 
 bit = 0|1|x|z
-[n] = bit[n];
+[n] = bit[n]; // deprecated
 
-//include capital letter cause compile error
+//include capital letter cause compile error// deprecated
+
+////
+//struct definition
+
+struct struct_name <template_paramerters>:
+	fields
+
+////
+//bit concatinate
+
+{1'1, 1'0} //2'10
+
+//note:
+//Is it possible to handle template_parameters(aka. metaval) as same as
+//non metaval?
 
 ////
 //function definition
 func function_name <template_parameters> input -> output:
 	body
 
+//or
+
+function_name : func <template_parameters> input -> output:
+	body
+
 ////
 //function usage
 
-// c lang like call
+// c lang style call
 outputs = function_name(inputs)
 
-// hdl like call (use as module)
+// hdl style call (use as module)
 function_name instance_name(inputs) // set input
 outputs = instance_name
+
+//lisp style call
+outputs = (function_name inputs)
 
 // compose
 inputs->function_name_1->function_name_2->outputs//if possible...
@@ -58,6 +87,9 @@ outputs = function_name_2(function_name_1(inputs))
 * //mul
 / //div
 
+& //and
+| //or
+
 ////
 //state machine(sync)
 seq machine_name <template_parameters> input -> output:
@@ -67,3 +99,11 @@ seq machine_name <template_parameters> input -> output:
 			body //apply at next clock
 	state state_name_2 (state_parameters):
 		state_body //apply at current clock
+
+
+////
+//module
+
+//input/output/(io)/state
+
+module module_name:
