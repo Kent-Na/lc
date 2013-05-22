@@ -8,13 +8,14 @@
 
 /+ Nestable multi line comment. (from D language) +/
 
+////
 //number
 
 //integer(metanum)
 //These are not concatinatable with other data.
-1
-30
-599
+//1
+//30
+//599
 
 
 //integer with bit width (bit[n])
@@ -40,7 +41,7 @@ logic = 0|1|x|z
 bit[n] //n bit array
 
 metanum //143
-metastr //"text"
+metastr //"text" Can cast to bit[n] type. Result are UTF-8 encoded bit array.
 metatime //4s 4ns 4ms ...
 metafreq //10Hz 10MHz 5KHz
 
@@ -55,7 +56,10 @@ auto //(from c++11)
 //scope
 //just variable scope
 scope{
-	body
+	//body
+
+	//and export variable
+	export bit[20] value_for_export;
 }
 
 ////
@@ -65,7 +69,7 @@ scope{
 //note: [A]Use struct!!
 
 function_name : func input_1 -> input_2 -> input_n -> output{
-	body
+	//body
 }
 
 ////
@@ -188,20 +192,31 @@ clock_gen : func metafreq fq -> module{
 //note: how to eliminate "reg"?
 //note: how to access state of machine?
 //note: how to determinate initial state?
+//note: how to set initial state?
 
-
+/*
 state_machine : module{
 	bit clock;
 	enumish_type state;
 }
+*/
 
 machine_name : seq{
 	state_name_0 : state{
-
+		//this is blackholl state
 	}
-	state_name_1 : func param -> state{
-		state{
 
+	state_name_1 : func param -> state{
+		next state_name_0;
+	}
+
+	//nested state
+	state_name_2 : state{
+		sub_state_0 : state{
+			next sub_state_1;
+		}
+		sub_state_1 : state{
+			next sub_state_1;
 		}
 	}
 
@@ -226,6 +241,8 @@ machine_name : seq{
 if machine.state is state_name(12xa03, _, _, 12){
 
 }
+
+//use machine.clock
 machine.state on state_0 -> state_1{
 
 }
@@ -233,8 +250,8 @@ machine.state on state_0 -> state_1{
 ////
 //good old way. (or not?)
 
-name : reg bit;
-name : ratch bit;
+reg bit reg_0;
+ratch bit ratch_0;
 
 //on statement works like "always" of verilogHDL.
 on +clock{
