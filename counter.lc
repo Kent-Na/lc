@@ -1,39 +1,25 @@
 
 //sequental logic
 
-seq counterA <metanum n> (bit in)->([n] out):
-	state s([n] count):
-		if in:
-			next s(count + 1):
-				out = count + 1
- 
+counter_a : func metanum bit_width => module{
+	reg bit[bit_width] count;
+	in bit clock;
 
-seq countterB <metanum n> (bit in)->([n] out):
-	state s([n] count):
-		if in:
-			out = count
-			next s(count+1): pass
+	clock on posedge{
+		clock = clock + 1'b1;
+	}
+}
 
-seq counterC <metanum n> (bit in)->([n] out):
-	[n] count
-	state:
-		if in:
-			out = count
-			count ++
+counter_b : func metanum bit_width => module{
+	seq{
+		s : func bit[bit_width] count => state{
+			next s(count+1)
+		}
+	} i_state;
 
-module counterD <metanum n> :
-	in clock CK 
-	in bit I
-	out [n] O = count
-
-	reg [n] count
-
-	on +CK :
-		if I :
-			clock ++
-
-interface counter <metanum n> :
-	in clock CK
-	in bit I
-	out [n] O
+	out o;
+	if i_state is s (bit count){
+		o = count;
+	}
+}
 

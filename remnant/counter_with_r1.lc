@@ -1,0 +1,39 @@
+
+//sequental logic
+
+seq counterA <metanum n> (bit in)->([n] out):
+	state s([n] count):
+		if in:
+			next s(count + 1):
+				out = count + 1
+ 
+
+seq countterB <metanum n> (bit in)->([n] out):
+	state s([n] count):
+		if in:
+			out = count
+			next s(count+1): pass
+
+seq counterC <metanum n> (bit in)->([n] out):
+	[n] count
+	state:
+		if in:
+			out = count
+			count ++
+
+module counterD <metanum n> :
+	in clock CK 
+	in bit I
+	out [n] O = count
+
+	reg [n] count
+
+	on +CK :
+		if I :
+			clock ++
+
+interface counter <metanum n> :
+	in clock CK
+	in bit I
+	out [n] O
+

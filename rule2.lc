@@ -22,7 +22,7 @@
 
 1'1//ok
 10'400//ok
-1'45 //error
+1'45 //error 
 
 10'b10//binaly
 10'd90//decimal
@@ -40,6 +40,7 @@ bit = 0|1
 logic = 0|1|x|z
 bit[n] //n bit array
 
+//metatypes
 metanum //143
 metastr //"text" Can cast to bit[n] type. Result are UTF-8 encoded bit array.
 metatime //4s 4ns 4ms ...
@@ -158,6 +159,7 @@ module_name : module{
 //std io module
 
 io : module{
+	//directional field
 	in bit input;
 	out logic output;
 }
@@ -193,6 +195,7 @@ clock_gen : func metafreq fq -> module{
 //note: how to access state of machine?
 //note: how to determinate initial state?
 //note: how to set initial state?
+//note: How to receive external input?
 
 /*
 state_machine : module{
@@ -243,7 +246,7 @@ if machine.state is state_name(12xa03, _, _, 12){
 }
 
 //use machine.clock
-machine.state on state_0 -> state_1{
+state_machine on state_0 -> state_1{
 
 }
 
@@ -254,10 +257,16 @@ reg bit reg_0;
 ratch bit ratch_0;
 
 //on statement works like "always" of verilogHDL.
-on +clock{
+clock on 1b0 -> 1b1{
 	//use reg here
 }
 
+//Keyword "posedge" or "negedge" can be used.
+clock on posedge{
+	//use reg here
+}
+
+//while statements are used for manipulate ratch.
 while signal{
 	//use ratch here
 }

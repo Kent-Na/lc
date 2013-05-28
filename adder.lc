@@ -73,7 +73,7 @@ full_adder_n func metanum n -> module{
 			c_out <- fa.c_out
 		}
 	}
-c
+}
 		
 
 
