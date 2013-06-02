@@ -1,0 +1,79 @@
+import std;
+
+RS_232_receiver : module{
+    metafreq bps = 119200Hz;
+    metafreq clock_freq = 50MHz;
+
+    in logic clock;
+    in logic signal_in;
+    output logic[8] data_out;
+    output logic data_enable;
+
+    ////
+    //signal clock generater & resetter
+
+    reg bit old_signal;
+    clock on posedge{
+        old_signal = signal_in;
+    }
+    bit signal_changed = signal_in ^ old_signal;
+
+    bit [9] counter_max = 9'd434; // = clock_freq/bps
+    Counter_9 : module{
+        in bit reset;
+        reg bit [9] counter;
+
+        clock on posedge{
+            if reset{
+                counter = 9'b0;
+            }
+            else{
+                counter ++;
+            }
+        }
+    }
+    
+    Counter_9 counter;
+    bit counter.reset = (counter.value == counter_max) | signal_changed;
+
+    //shift_register
+    Shift_reg_10 : module{
+        in bit clock;
+        in bit signal_in;
+        in bit shift;
+        in bit reset;
+
+        reg bit[10] value;
+
+        clock on posedge{
+            if reset{
+                value = 10'b0;
+            }
+            elif shift{
+               value = {signal_in, value[8:0]};
+            }
+        }
+    }
+
+    //catch serial signal with 3 defferent phase clock
+    //s_reg[0] : 90deg
+    //s_reg[1] : 180deg
+    //s_reg[2] : 270deg
+
+    Shift_reg_10 [3] s_reg;
+
+    s_reg.clock = repeat(clock,3);
+    s_reg.signal_in = repeat(signal_in,3);
+    s_reg[0].shift = counter.value == counter_max>>2;
+    s_reg[1].shift = counter.value == counter_max>>1;
+    s_reg[2].shift = counter.value == counter_max>>1+counter_max>>2;
+
+    bit receive_done = 
+        s_reg[0].value == s_reg[1].value &&
+        s_reg[1].value == s_reg[2].value &&
+        s_reg[0].value[0,9] == 2'b01
+    
+    s_reg.clear = repeat(receive_done,3);
+    data_enable = receive_done;
+
+}

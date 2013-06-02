@@ -13,6 +13,7 @@ module Token(
     satisfy_token, any_token,
     user_token, s_token,
     unary_op, binary_op,
+    type_name_token,
     (<:>),
     (<+>)
 ) where
@@ -69,6 +70,13 @@ satisfy_token f = tokenPrim (\(pos, tok) -> show tok)
 any_token :: Token_parser Token
 any_token = satisfy_token (const True)
 
+t_token tok = satisfy_token (== tok)
+
+type_name_token :: Token_parser Token
+type_name_token = do
+    try user_token <|> choice (map (try.t_token.Predefined_token)
+        (pre_defined_tyes++pre_defined_meta_tyes))
+
 --String token. Parses a token that mach with given string.
 s_token :: String -> Token_parser Token
 s_token s = 
@@ -102,9 +110,10 @@ white_space = space <|> newline <|> tab
 
 skip_white_space = skipMany white_space
 
-double_char_symbol = ["->", "=>"]
-single_char_symbol = [":", "=", "{", "}", "[", "]", ","] ++
-	["+", "-", "*", "/", ";"]
+double_char_symbol = ["->", "=>", "==", ">>", "<<"]
+single_char_symbol = [":", "=", "{", "}", "[", "]", ",", "(", ")"] ++
+	["+", "-", "*", "/", "^", ".", ";", "&", "|"]
+
 
 keywords = ["func", "struct", "module", "return", "in", "out"]
 pre_defined_tyes = ["bit", "logic", "auto"]
@@ -167,7 +176,6 @@ lc_digit b val = do
 lc_number_body b val = do
 	new <- lc_digit b val
 	(try $ lc_number_body b new ) <|> do 
-		white_space  
 		return new
 
 lc_number::Parser (SourcePos, Token)
@@ -184,6 +192,11 @@ lc_number = do
 		| elem b "dD" = lc_number_body 10 0
 		| elem b "hH" = lc_number_body 16 0
 
+lc_metanum_zero::Parser Int
+lc_metanum_zero = do 
+	msb <- char '0'
+	return 0
+
 lc_metanum_body::Parser Int 
 lc_metanum_body = do 
 	msb <- oneOf "123456789"
@@ -192,7 +205,7 @@ lc_metanum_body = do
 
 lc_metanum = do 
 	pos <- getPosition
-	val <- lc_metanum_body
+	val <- try lc_metanum_zero <|> lc_metanum_body
 	return $ (pos, Meta_number_literal val "")
 
 si_prefix::Parser Char 
@@ -200,7 +213,7 @@ si_prefix = oneOf "TGMkmunp"
 
 lc_metafreq = do
 	pos <- getPosition
-	val <- lc_metanum_body
+	val <- try lc_metanum_zero <|> lc_metanum_body
 	unit <- choice [
 		try $ do {p<-si_prefix; u<-string "Hz"; return (p:u)},
 		try $ string "Hz"]
@@ -208,7 +221,7 @@ lc_metafreq = do
 
 lc_metatime = do
 	pos <- getPosition
-	val <- lc_metanum_body
+	val <- try lc_metanum_zero <|> lc_metanum_body
 	unit <- choice [
 		try $ do {p<-si_prefix; u<-string "s"; return (p:u)},
 		try $ string "s"]
@@ -252,3 +265,6 @@ kilo_assign= "{lval_a[idx_a, idx_b:idx_c], lval_b} = " ++
 	"r_val_a+r_val_b-r_val_c;"
 mega_statement = "{lval_a[2, 12:16], lval_b} = " ++
 	"r_val_a+r_val_b-r_val_c"
+
+fancy_show (Right s) = show (snd (unzip s))
+fancy_show (Left s) = "err"

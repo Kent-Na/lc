@@ -1,6 +1,14 @@
 
+//package_management
+
+import package_name;
+package package_name;
+export export_idintifier_name;
+export all;
+
 
 //note: There are 3 functions HDL have. Simulate, Generate, Describe.
+//note: Need document comment.
 
 // Line comment
 
