@@ -6,8 +6,8 @@ RS_232_receiver : module{
 
     in logic clock;
     in logic signal_in;
-    output logic[8] data_out;
-    output logic data_enable;
+    out logic[8] data_out;
+    out logic data_enable;
 
     ////
     //signal clock generater & resetter
@@ -34,7 +34,7 @@ RS_232_receiver : module{
     }
     
     Counter_9 counter;
-    bit counter.reset = (counter.value == counter_max) | signal_changed;
+    counter.reset = (counter.value == counter_max) | signal_changed;
 
     //shift_register
     Shift_reg_10 : module{
@@ -64,6 +64,7 @@ RS_232_receiver : module{
 
     s_reg.clock = repeat(clock,3);
     s_reg.signal_in = repeat(signal_in,3);
+    test = s_reg[0].shift; 
     s_reg[0].shift = counter.value == counter_max>>2;
     s_reg[1].shift = counter.value == counter_max>>1;
     s_reg[2].shift = counter.value == counter_max>>1+counter_max>>2;
@@ -71,7 +72,7 @@ RS_232_receiver : module{
     bit receive_done = 
         s_reg[0].value == s_reg[1].value &&
         s_reg[1].value == s_reg[2].value &&
-        s_reg[0].value[0,9] == 2'b01
+        s_reg[0].value[0,9] == 2'b01;
     
     s_reg.clear = repeat(receive_done,3);
     data_enable = receive_done;
