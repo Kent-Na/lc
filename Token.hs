@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Token(
+    Unit,
 	Token(
         User_token,
         Predefined_token,
@@ -8,6 +9,7 @@ module Token(
         Symbol,
         Bit_array_literal,
         Meta_number_literal),
+    value,
     lc_token, lc_tokenize_file,
     Token_parser,
     satisfy_token, any_token,
@@ -38,13 +40,15 @@ import Numeric
 --                       like 3'b01_1.
 --Meta_number_literal v u: Meta number constants With value v and unit u.
 
-data Token = 
-	User_token          String |
-	Predefined_token    String |
-	Keyword             String |
-	Symbol              String |
-	Bit_array_literal   Int Int |
-	Meta_number_literal Int String
+type Unit = String
+
+data Token
+	=User_token          {value::String}
+	|Predefined_token    String 
+	|Keyword             String 
+	|Symbol              {value::String}
+	|Bit_array_literal   Int Int 
+	|Meta_number_literal Int Unit 
 	deriving (Show, Eq)
 
 -----------
