@@ -11,13 +11,13 @@ module Token(
         Meta_number_literal),
     value,
     lc_token, lc_tokenize_file,
-    Token_parser,
-    satisfy_token, any_token,
-    user_token, s_token, literal_token,
-    unary_op, binary_op,
-    type_name_token,
-    (<:>),
-    (<+>)
+    --Token_parser,
+    --satisfy_token, any_token,
+    --user_token, s_token, literal_token,
+    --unary_op, binary_op,
+    --type_name_token,
+    --(<:>),
+    --(<+>)
 ) where
 
 import Text.Parsec
@@ -51,70 +51,6 @@ data Token
 	|Meta_number_literal Int Unit 
 	deriving (Show, Eq)
 
------------
--- parsec token parser
-
-type Token_parser = Parsec [(SourcePos, Token)] ()
-
-is_user_token :: Token -> Bool
-is_user_token (User_token s) = True
-is_user_token _ = False 
-
-user_token = (satisfy_token is_user_token) <?> "user_token"
-
-is_literal_token :: Token -> Bool
-is_literal_token (Bit_array_literal _ _) = True
-is_literal_token (Meta_number_literal _ _) = True
-is_literal_token _ = False 
-
-literal_token = satisfy_token is_literal_token <?> "literal_token"
-
-update_pos_token ((x,_):_) = x
-update_pos_token [] = newPos "!endoffile!" 0 0 
-
-satisfy_token :: (Token -> Bool) -> (Token_parser Token)
---(Stream [(SourcePos, Token)] m (SourcePos, Token)) => 
-satisfy_token f = 
-    tokenPrim (\(pos, tok) -> show tok)
-              (\pos x xs -> update_pos_token xs)
-              (\(pos, tok) -> if f tok then Just tok else Nothing)
-
-any_token :: Token_parser Token
-any_token = satisfy_token (const True)
-
-t_token tok = satisfy_token (== tok)
-
-type_name_token :: Token_parser Token
-type_name_token = do
-    try user_token <|> choice (map (try.t_token.Predefined_token)
-        (pre_defined_tyes++pre_defined_meta_tyes))
-
---String token. Parses a token that mach with given string.
-s_token :: String -> Token_parser Token
-s_token s = 
-   f x
-   where 
-    f (Right (pos, tok)) = satisfy_token (== tok) <?> s
-    f (Left _ ) = unexpected "bad token (bug in compiler)"
-    x = (parse lc_token "" s)
-
-unary_op :: Token_parser Token
-unary_op = choice (map s_token ["+", "-", "&", "|"]) <?>
-    "unary operator"
-
-binary_op :: Token_parser Token
-binary_op = choice (map s_token 
-    ["+", "-", "^", "&", "|", "==", ".", ">>"]) <?>
-    "binary operator"
-
-(<:>) :: (Token_parser a) -> (Token_parser [a]) -> (Token_parser [a])
-l <:> r = liftM2 (:) l r
-infixr 5 <:>
-
-(<+>) :: (Token_parser a) -> (Token_parser b) -> (Token_parser b)
-l <+> r = do
-    l
-    r
 -------
 --Tokenizer
 

@@ -50,7 +50,9 @@ bit[n] //n bit array
 
 //metatypes
 metanum //143
-metastr //"text" Can cast to bit[n] type. Result are UTF-8 encoded bit array.
+metastr 
+//"text" Can cast to bit[n] type. Result are UTF-8 encoded 
+//bit array. ex. "ab" == 16'h6162
 metatime //4s 4ns 4ms ...
 metafreq //10Hz 10MHz 5KHz
 
@@ -277,4 +279,9 @@ clock on posedge{
 //while statements are used for manipulate ratch.
 while signal{
 	//use ratch here
+}
+
+//"on init" block can be used to initialize reg/ratch.
+on init{
+    //initialise reg/ratch here
 }
