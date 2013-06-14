@@ -44,8 +44,8 @@ type Unit = String
 
 data Token
 	=User_token          {value::String}
-	|Predefined_token    String 
-	|Keyword             String 
+	|Predefined_token    {value::String} 
+	|Keyword             {value::String} 
 	|Symbol              {value::String}
 	|Bit_array_literal   Int Int 
 	|Meta_number_literal Int Unit 

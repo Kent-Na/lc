@@ -85,14 +85,15 @@ l <+> r = do
 ----
 --core data structures
 type Type_name = String 
-data Type = 
-    Unresolved_type Type_name
+data Type
+    =Unresolved_type Type_name
+    |Array_type Type Value
     deriving(Show)
 
 type Variable_name = String 
 
 data Variable
-    =Variable Type Variable_name
+    =Variable Type 
     |Unresolved_variable Variable_name
     deriving(Show)
 
@@ -183,6 +184,12 @@ add_definition s d= do
     where 
         add_to_scope (Scope ds vs) = Scope (Data.Map.insert s d ds) vs
     
+add_variable::String -> Variable -> Token_parser ()
+add_variable s v= do
+    st <- getState
+    setState $ add_to_scope (head st) : tail st
+    where 
+        add_to_scope (Scope ds vs) = Scope ds (Data.Map.insert s v vs)
 
 --is_const::Value -> Bool
 --is_assignable::Value -> Bool
@@ -190,14 +197,11 @@ add_definition s d= do
 ----
 --Token parsers
 
-
---type ParserL = Parsec [Token] ()
 lc_parse_file::Token_parser Parse_state
 lc_parse_file = do
     result <- many $ lc_top_level
     eof
     getState
-    --User_token "file"
 
 lc_top_level::Token_parser Token
 lc_top_level = do
@@ -378,6 +382,9 @@ lc_variable_define = do
     var_name <- user_token 
     option (Meta_string_value "dummy") lc_variable_init
     s_token ";"
+    add_variable 
+        (value var_name) 
+        (Variable var_type)
     return ()
 
 -- T a "= a"
@@ -387,13 +394,19 @@ lc_variable_init = do
 
 -- T
 -- T[a]
+lc_type_name:: Token_parser Type 
 lc_type_name = do
-    type_name_token
-    option (User_token "dummy") (do{
-        s_token "[";
-        literal_token;
-        s_token "]";
-        } )
+    base <- type_name_token
+    array_args <- many lc_array_type_decolator
+    return $ foldl Array_type (Unresolved_type (value base)) array_args
+
+-- part [a] of T[a] 
+lc_array_type_decolator:: Token_parser Value
+lc_array_type_decolator = do
+    s_token "[";
+    s <- lc_statement;
+    s_token "]";
+    return s
 
 -- return a;
 lc_return :: Token_parser ()
