@@ -1,4 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
+module Parse where
+
 import Token 
 import Text.Parsec
 import Text.Parsec.Pos (newPos)
@@ -18,6 +20,9 @@ import qualified Data.Map
 
 type Token_parser = Parsec [(SourcePos, Token)] Parse_state
 
+any_token :: Token_parser Token
+any_token = satisfy_token (const True)
+
 is_user_token :: Token -> Bool
 is_user_token (User_token s) = True
 is_user_token _ = False 
@@ -31,38 +36,32 @@ is_literal_token _ = False
 
 literal_token = satisfy_token is_literal_token <?> "literal_token"
 
-update_pos_token ((x,_):_) = x
-update_pos_token [] = newPos "!endoffile!" 0 0 
+is_predefined_token :: Token -> Bool
+is_predefined_token (Predefined_token _) = True
+is_predefined_token _ = False 
+
+predefined_token = 
+    satisfy_token is_predefined_token <?> "predefined_token"
+
+type_name_token :: Token_parser Token
+type_name_token = try user_token <|> try predefined_token <?> "type name"
 
 satisfy_token :: (Token -> Bool) -> (Token_parser Token)
 satisfy_token f = 
     tokenPrim (\(pos, tok) -> show tok)
               (\pos x xs -> update_pos_token xs)
               (\(pos, tok) -> if f tok then Just tok else Nothing)
-
-any_token :: Token_parser Token
-any_token = satisfy_token (const True)
-
-t_token tok = satisfy_token (== tok)
-
-
-is_predefined_token :: Token -> Bool
-is_predefined_token (Predefined_token _) = True
-is_predefined_token _ = False 
-
-predefined_token = satisfy_token is_predefined_token <?> "predefined_token"
-
-type_name_token :: Token_parser Token
-type_name_token = try user_token <|> try predefined_token
+    where 
+        update_pos_token ((x,_):_) = x
+        update_pos_token [] = newPos "!endoffile!" 0 0 
 
 --String token. Parses a token that mach with given string.
 s_token :: String -> Token_parser Token
 s_token s = 
-   f x
+   f (parse lc_token "" s)
    where 
     f (Right (pos, tok)) = satisfy_token (== tok) <?> s
     f (Left _ ) = unexpected "bad token (bug in compiler)"
-    x = (parse lc_token "" s)
 
 unary_op :: Token_parser Token
 unary_op = choice (map s_token ["+", "-", "&", "|"]) <?>
@@ -72,15 +71,6 @@ binary_op :: Token_parser Token
 binary_op = choice (map s_token 
     ["+", "-", "^", "&", "|", "==", ".", ">>"]) <?>
     "binary operator"
-
-(<:>) :: (Token_parser a) -> (Token_parser [a]) -> (Token_parser [a])
-l <:> r = liftM2 (:) l r
-infixr 5 <:>
-
-(<+>) :: (Token_parser a) -> (Token_parser b) -> (Token_parser b)
-l <+> r = do
-    l
-    r
 
 ----
 --core data structures
@@ -126,15 +116,23 @@ data Module
     |Module Scope
     deriving(Show)
 
-
 type Bit_width = Int
 type Bit_value = Int
 
 -- a = b
 --Left hand value must be assinable
-data Assign = Assign Value Value
-
-data Reg_assign = Reg_assign Value Value
+--Assign lvalue rvalue
+data Statement
+    =Assign Value Value
+    |Return Value 
+    -- If ifel else block.
+    -- condition internal_statement chained_condition_block
+    -- else block have always true condition.
+    |If_chain [(Value, Scope)]
+    -- On block
+    -- timing pre_condition post_condition internal_statements
+    |On Value Value Value Scope
+    deriving(Show)
 
 data Slice_range
     =Slice_range Value Value 
@@ -163,10 +161,11 @@ data Scope
     = Scope 
         (Map String Definition) 
         (Map String Variable)
+        [Statement]
     deriving(Show)
 
 brank_state = [brank_scope] 
-brank_scope = Scope Data.Map.empty Data.Map.empty
+brank_scope = Scope Data.Map.empty Data.Map.empty []
 
 push_state:: Token_parser()
 push_state = modifyState (\s -> brank_scope:s)
@@ -182,17 +181,28 @@ add_definition s d= do
     st <- getState
     setState $ add_to_scope (head st) : tail st
     where 
-        add_to_scope (Scope ds vs) = Scope (Data.Map.insert s d ds) vs
+        add_to_scope (Scope ds vs stmt) 
+            = Scope (Data.Map.insert s d ds) vs stmt
     
 add_variable::String -> Variable -> Token_parser ()
 add_variable s v= do
     st <- getState
     setState $ add_to_scope (head st) : tail st
     where 
-        add_to_scope (Scope ds vs) = Scope ds (Data.Map.insert s v vs)
+        add_to_scope (Scope ds vs stmt) 
+            = Scope ds (Data.Map.insert s v vs) stmt
+
+add_statement::Statement -> Token_parser ()
+add_statement s = do
+    st <- getState
+    setState $ add_to_scope (head st) : tail st
+    where 
+        add_to_scope (Scope ds vs stmt) 
+            = Scope ds vs (s:stmt)
 
 --is_const::Value -> Bool
 --is_assignable::Value -> Bool
+
 
 ----
 --Token parsers
@@ -244,7 +254,6 @@ lc_define_base p d= do
     f <- p 
     add_definition (value name) (d f)
     --return $ d (value name) f
-    
 
 
 -------
@@ -254,12 +263,11 @@ lc_define_base p d= do
 lc_func_block:: Token_parser Function 
 lc_func_block = do
     s_token "func"
-    args <- sepBy (type_name_token <+> user_token) (s_token "->")
+    args <- sepBy lc_func_arg (s_token "->")
     
     s_token "{"
     statements <- many $ choice [
         try lc_assign, 
-        try lc_incliment, 
         lc_return]
     s_token "}"
 
@@ -298,7 +306,8 @@ lc_module_block = do
 --a on b -> c { ... }
 lc_on_block:: Token_parser () 
 lc_on_block = do
-    user_token
+    push_state
+    tgt <- lc_value 
     s_token "on"
     s_token "posedge"
 
@@ -308,60 +317,56 @@ lc_on_block = do
         try lc_assign,
         try lc_incliment]
     s_token "}"
-    
+    st <- pop_state
+    add_statement $ 
+        On tgt (Bit_array_value 1 0) (Bit_array_value 1 1) st
     return ()
 
 lc_if_elif_else_block:: Token_parser ()
 lc_if_elif_else_block = do
-    lc_if_block
-    many lc_elif_block
-    option (User_token "dummy") lc_else_block
+    x <- lc_if_block
+    xs <- many lc_elif_block
+    xops <- optionMaybe lc_else_block
+    add_statement $
+        If_chain (result x xs xops)
     return ()
+    where 
+        result x xs (Just xops)= (x:xs)++[xops]
+        result x xs (Nothing)= x:xs
 
 --if a {}
-lc_if_block:: Token_parser Token 
-lc_if_block = do
-    s_token "if"
-    lc_statement
-
-    s_token "{"
-    statements <- many $ choice [
-        try lc_if_elif_else_block,
-        try lc_assign,
-        try lc_incliment]
-    s_token "}"
-
-    return $ User_token "if"
+lc_if_block = lc_if_elif_block "if"
 
 --elif a {}
-lc_elif_block:: Token_parser Token 
-lc_elif_block = do
-    s_token "elif"
-    lc_statement
+lc_elif_block = lc_if_elif_block "elif"
 
+lc_if_elif_block:: String -> Token_parser (Value, Scope)
+lc_if_elif_block label = do
+    push_state
+    s_token label
+    cond <- lc_value
     s_token "{"
     statements <- many $ choice [
         try lc_if_elif_else_block,
         try lc_assign,
         try lc_incliment]
     s_token "}"
-
-    return $ User_token "elif"
+    st <- pop_state
+    return (cond, st)
 
 --else {}
-lc_else_block:: Token_parser Token 
+lc_else_block:: Token_parser (Value, Scope)
 lc_else_block = do
+    push_state
     s_token "else"
-
     s_token "{"
     statements <- many $ choice [
         try lc_if_elif_else_block,
         try lc_assign,
         try lc_incliment]
     s_token "}"
-
-    return $ User_token "else"
-
+    st <- pop_state
+    return (Bit_array_value 1 1, st)
 
 -- in T a;
 lc_port_define::Token_parser ()
@@ -390,8 +395,12 @@ lc_variable_define = do
 -- T a "= a"
 lc_variable_init = do
     s_token "="
-    lc_statement
+    lc_value
 
+lc_func_arg= do
+    var_type <- lc_type_name 
+    var_name <- user_token 
+    return (var_type, var_name)
 -- T
 -- T[a]
 lc_type_name:: Token_parser Type 
@@ -404,66 +413,72 @@ lc_type_name = do
 lc_array_type_decolator:: Token_parser Value
 lc_array_type_decolator = do
     s_token "[";
-    s <- lc_statement;
+    s <- lc_value;
     s_token "]";
     return s
 
 -- return a;
-lc_return :: Token_parser ()
+lc_return :: Token_parser () 
 lc_return = do
     s_token "return"
-    lc_statement
+    v <- lc_value
     s_token ";"
+    add_statement $ Return v
     return ()
 
 -- a = b;
 lc_assign::Token_parser () 
 lc_assign = do 
-    l <- lc_statement
+    l <- lc_value
     s_token "="
-    r <- lc_statement
+    r <- lc_value
     s_token ";"
+    add_statement $ Assign l r
     return ()
 
--- a ++
+-- a ++;
+lc_incliment:: Token_parser ()
 lc_incliment = do
-    lc_statement
+    v <- lc_value
     s_token "++"
     s_token ";"
+    add_statement $ Assign v (Binaly_operator "+" v (Bit_array_value 1 1))
     return ()
 
+
+----
+--Value parsers
 
 lc_function_call:: Token_parser Value 
 lc_function_call = do 
     name <- user_token
     s_token "("
-    params <- sepBy1 lc_statement (s_token ",")
+    params <- sepBy1 lc_value (s_token ",")
     s_token ")"
     return $ Function_call (Unresolved_function (value name)) params
 
-lc_statement:: Token_parser Value
-lc_statement= do
-    value <- lc_statement_pre
-    option value (lc_statement_post value)
+lc_value:: Token_parser Value
+lc_value= do
+    value <- lc_value_with_prefix
+    option value (lc_value_postfix value)
 
-lc_statement_post:: Value -> Token_parser Value
-lc_statement_post v = do
+lc_value_postfix:: Value -> Token_parser Value
+lc_value_postfix v = do
     v' <- choice[
         lc_binary_op v,
         lc_slice_op v]
-    option v' (lc_statement_post v')
+    option v' (lc_value_postfix v')
 
 --Statements with prefix operatores or/and braces.
-lc_statement_pre:: Token_parser Value
-lc_statement_pre = do
+lc_value_with_prefix:: Token_parser Value
+lc_value_with_prefix = do
     choice [
-        try (unary_op<+>lc_statement), 
-        try $ between (s_token "(") (s_token ")") lc_statement,
+        try lc_unaly_op, 
+        try $ between (s_token "(") (s_token ")") lc_value,
         try lc_cat_op,
         try lc_function_call,
         try lc_variable,
         try lc_literal]
-    --return $ User_token "n_statement"
 
 lc_variable:: Token_parser Value
 lc_variable = do
@@ -478,17 +493,25 @@ lc_literal = do
         f (Bit_array_literal w v) = Bit_array_value w v
         f (Meta_number_literal v u) = Meta_number_value v u
 
+-- -a
+lc_unaly_op::Token_parser Value
+lc_unaly_op = do
+    op <- unary_op 
+    val <- lc_value
+    return $ Unaly_operator (value op) val
+
+--a + b
 lc_binary_op::Value -> Token_parser Value
 lc_binary_op left = do
     op <- binary_op
-    right <- lc_statement_pre
+    right <- lc_value_with_prefix
     return $ Binaly_operator (value op) left right
 
 --{a, b, c}
 lc_cat_op:: Token_parser Value
 lc_cat_op = do 
     statements <- between (s_token "{") (s_token "}")
-        (sepBy1 lc_statement (s_token ","))
+        (sepBy1 lc_value (s_token ","))
     return $ Cat_operator statements
 
 --a[b:c, d]
@@ -498,6 +521,7 @@ lc_slice_op v = do
         (sepBy1 lc_slice_range (s_token ","))
     return $ Slice_operator v ranges
 
+--Parse the part 'a:b' or 'c' of x[a:b,c]
 lc_slice_range:: Token_parser Slice_range
 lc_slice_range = choice [
     try lc_slice_range_d,
@@ -506,18 +530,20 @@ lc_slice_range = choice [
 --Parse the part 'c' of x[a:b,c]
 lc_slice_range_s:: Token_parser Slice_range
 lc_slice_range_s = do
-    point <- lc_statement
+    point <- lc_value
     return $ Slice_point point 
 
 --Parse the part 'a:b' of x[a:b,c]
 lc_slice_range_d:: Token_parser Slice_range
 lc_slice_range_d = do
-    begin <- lc_statement
+    begin <- lc_value
     s_token ":"
-    end <- lc_statement
+    end <- lc_value
     return $ Slice_range begin end
 
 
+----
+--for debug
 parse_str_with p s = 
     runParser p brank_state "" (f (parse lc_tokenize_file "" s))
     where 
@@ -525,7 +551,6 @@ parse_str_with p s =
         f (Left _) = []
 parse_str s = parse_str_with lc_parse_file s
 
---for debug
 kilo_assign= "{lval_a[idx_a, idx_b:idx_c], lval_b} = " ++
 	"r_val_a+r_val_b-r_val_c;"
 mega_assign= "{lval_a[2, 12:16], lval_b} = " ++

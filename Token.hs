@@ -11,13 +11,6 @@ module Token(
         Meta_number_literal),
     value,
     lc_token, lc_tokenize_file,
-    --Token_parser,
-    --satisfy_token, any_token,
-    --user_token, s_token, literal_token,
-    --unary_op, binary_op,
-    --type_name_token,
-    --(<:>),
-    --(<+>)
 ) where
 
 import Text.Parsec
@@ -36,9 +29,9 @@ import Numeric
 --Keyword : Predefined keywords like "struct" or "func".
 --User_token : Identifiers possibly defined by users.
 --Symbol : Operators and delimiters like "+" "{" ...
---Bit_array_literal w v: Bit array constants With length w and value v
+--Bit_array_literal w v: Bit array constants with length w and value v
 --                       like 3'b01_1.
---Meta_number_literal v u: Meta number constants With value v and unit u.
+--Meta_number_literal v u: Meta number constants with value v and unit u.
 
 type Unit = String
 
@@ -200,16 +193,14 @@ lc_token = do
 	skip_cws
 	return t
 
---lc_tokens::[String] -> Int -> Parser [String]
---lc_tokens s n  
-	-- | n == 0 = do {last<-lc_token; return (s++[last])}
-	-- | otherwise = do {x<-lc_token; lc_tokens (s++[x]) (n-1);}
-
 lc_tokenize_file = do
 	skip_cws
 	contents <- many lc_token
 	eof
 	return contents 
+
+----
+--for debug
 
 load_test = readFile "tests/func.lc"
 do_test s = parse lc_tokenize_file "" s

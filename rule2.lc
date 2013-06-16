@@ -37,7 +37,8 @@ export all;
 10'o72//oct
 24'hBeef20//hex
 
-//(bin, hex and oct)integer can contain any number of underbar for visibility.
+//(bin, hex and oct)integer can contain any number of underbar 
+//for visibility.
 
 8'b0110_11__10 // = 8'b01101110
 
@@ -89,7 +90,7 @@ function_name : func input_1 -> input_2 -> input_n -> output{
 //struct can contain meta value
 
 struct_name : struct{
-	fields
+    type_name field_name;	
 }
 
 //template struct with func
@@ -121,6 +122,25 @@ outputs = (function_name inputs)
 //inputs->function_name_1->function_name_2->outputs//if possible...
 outputs = function_name_2(function_name_1(inputs))
 
+////
+//if and select
+
+if condition_0 {
+
+}
+elif condition_1 {
+
+}
+else{
+
+}
+
+var = select input{
+    case x -> a;
+    case y -> b;
+    default -> c;
+}
+
 //////////
 //operaters
 //
@@ -144,7 +164,8 @@ a[4:6,8] // = {a[4],a[5],a[8]}
 = // right to left
 <- // same as '='
 -> // left to right
-<-(metatime) //delayed assign
+=[metatime]
+<-[metatime] //delayed assign
 
 a <-(5ns) 1'b0;
 
@@ -162,33 +183,20 @@ a <-(5ns) 1'b0;
 //module(state less)
 
 module_name : module{
-	in type name;
-	out type name;
-}
-	
-//std io module
-
-io : module{
-	//directional field
-	in bit input;
-	out logic output;
+	in type field_name_1;
+	out type field_name_2;
 }
 
-//std external_io module
+//Module array
+module_name[10] instance_name;
 
-external_io : func metastr loc -> module{
-	module{
-		bit bit output;
-	}
+//Module array signal auto concatinate
+m_0 :module{
+    in bit f_0;
 }
 
-
-//std clock module
-clock_gen : func metafreq fq -> module{
-	module{
-		out bit clock;
-	}
-}
+m_0[3] i_0;
+bit[3] var = i_0.f_0// = {i_0[0], i_0[1], i_0[1]}
 
 ////
 //state machine(sync)
@@ -196,6 +204,7 @@ clock_gen : func metafreq fq -> module{
 //note: What we needs are
 //input
 //output
+//  Output signal are generated with "on" statement with outside register.
 //state
 //clock
 
@@ -214,12 +223,16 @@ state_machine : module{
 }
 */
 
+clock on posedge{
+    drive machine_instance;
+}
+
 machine_name : seq{
 	state_name_0 : state{
 		//this is blackholl state
 	}
 
-	state_name_1 : func param -> state{
+	state_name_1 : func param => state{
 		next state_name_0;
 	}
 
@@ -231,18 +244,6 @@ machine_name : seq{
 		sub_state_1 : state{
 			next sub_state_1;
 		}
-	}
-
-
-	//dead
-	state_name_1 : state (state_parameters) initial (param){
-		state_body //apply at begining of current clock
-		next next_state_name(param):
-			body //apply at next clock
-	}
-	//also dead
-	state_name_2 : state (state_parameters){
-		state_body //apply at current clock
 	}
 }
 
@@ -267,11 +268,13 @@ reg bit reg_0;
 ratch bit ratch_0;
 
 //on statement works like "always" of verilogHDL.
-clock on 1b0 -> 1b1{
+clock on 1'b0 -> 1'b1{
 	//use reg here
 }
 
 //Keyword "posedge" or "negedge" can be used.
+//posedge = 1'b0 -> 1'b1
+//negedge = 1'b1 -> 1'b0
 clock on posedge{
 	//use reg here
 }

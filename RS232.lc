@@ -10,7 +10,7 @@ RS_232_receiver : module{
     out logic data_enable;
 
     ////
-    //signal clock generater & resetter
+    //Signal clock generater & resetter
 
     reg bit old_signal;
     clock on posedge{
@@ -36,7 +36,7 @@ RS_232_receiver : module{
     Counter_9 counter;
     counter.reset = (counter.value == counter_max) | signal_changed;
 
-    //shift_register
+    //Shift register
     Shift_reg_10 : module{
         in bit clock;
         in bit signal_in;
@@ -55,7 +55,7 @@ RS_232_receiver : module{
         }
     }
 
-    //catch serial signal with 3 defferent phase clock
+    //Catch serial signal with 3 defferent phase clock
     //s_reg[0] : 90deg
     //s_reg[1] : 180deg
     //s_reg[2] : 270deg
