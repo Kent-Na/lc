@@ -1,0 +1,89 @@
+
+top_level = {("import" id ";")|define_stmt} ;
+
+(*statement and expression*)
+statement = define_stmt | variable_stmt 
+          | reg_variable_stmt | io_variable_stmt
+          | assign_stmt | return_stmt | if_stmt | on_stmt;
+
+define_stmt = id ":" (function_block|struct_block|module_block) 
+function_block = "func" {type_expr id "->"} type_expr
+                 "{" {statement} "}";
+
+struct_block = "struct" "{" {statement} "}";
+module_block = "module" "{" {statement} "}";
+
+variable_stmt = type_expr id;
+reg_variable_stmt = "reg" type_expr id;
+io_variable_stmt = ("in"|"out") type_expr id;
+assign_stmt = expression "=" expression ";";
+incliment_stmt = expression ("++"|"--") ";";
+
+if_stmt     = "if" if_condition "{" { statement } "}"
+             {"elif" if_condition "{" { statement } "}"}
+             ["else" "{" {statementn} "}"];
+if_condition = expression;
+
+on_stmt     = expression "on" on_condition "{" { statement } "}";
+
+on_condition = expression "->" expression
+             | "posedge"
+             | "negedge";
+
+(*type expression*)
+type_expr = id {"[" expression "]"};
+
+(*value expression*)
+expression = primary_expr
+           | expression binary_op primary_expr
+           | expression field_access_op
+           | expression slice_op
+
+unary_expr = primary_expr 
+           | unaly_op unary_expr 
+
+primary_expr = id
+             | bit_array
+             | brace_op
+             | cat_op 
+             | id func_call_c
+
+unary_op = "-"|"+"|"&"|"|";
+binary_op = "+"|"-"|"^"|"&"|"|"|"=="|">>"
+brace_op = "(" expression ")";
+cat_op = "{" expression {"" expression} "}";
+func_call_c = "(" expression {"" expression} ")";
+
+slice_op = "[" slice_range {"" slice_range} "]";
+slice_range = expression [":" expression];
+field_access_op = expression "." id;
+
+(*Numbers*)
+bit_array = bit_array_header "'" bit_array_body
+bit_array_header = zero_digit | (non_zero_dec_digit {dec_digit})
+bit_array_body = bin_bit_array_body
+               | oct_bit_array_body
+               | dec_bit_array_body
+               | hex_bit_array_body;
+
+bin_bit_array_body = ("b"|"B"){bin_digit|"_"}
+oct_bit_array_body = ("o"|"O"){oct_digit|"_"}
+dec_bit_array_body = ("d"|"D"){oct_digit}
+hex_bit_array_body = ("h"|"H"){hex_digit|"_"}
+
+bin_digit = zero_digit | non_zero_bin_digit;
+oct_digit = zero_digit | non_zero_oct_digit;
+dec_digit = zero_digit | non_zero_dec_digit;
+hex_digit = zero_digit | non_zero_hex_digit;
+
+zero_digit = "0";
+non_zero_bin_digit = "1";
+non_zero_oct_digit = non_zero_bin_digit | "2" | "3" | "4" | "5" | "6" | "7";
+non_zero_dec_digit = non_zero_oct_digit | "8" | "9";
+non_zero_hex_digit = non_zero_oct_digit 
+                   | "a" | "b" | "c" | "d" | "e" | "f"
+                   | "A" | "B" | "C" | "D" | "E" | "F";
+
+meta_number = non_zero_dec_digit [[si_prefix]si_unit];
+si_prefix = "T" | "G" | "M" | "k" | "m" | "u" | "n" | "p";
+si_unit= "Hz" | "s";
