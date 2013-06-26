@@ -37,8 +37,8 @@ export all;
 10'o72//oct
 24'hBeef20//hex
 
-//(bin, hex and oct)integer can contain any number of underbar 
-//for visibility.
+//(bin, hex and oct)
+//integer can contain any number of underbar for visibility.
 
 8'b0110_11__10 // = 8'b01101110
 
@@ -47,7 +47,7 @@ export all;
 
 bit = 0|1
 logic = 0|1|x|z
-bit[n] //n bit array
+bit[n] //Array of "bit", size "n"
 
 //metatypes
 metanum //143
@@ -104,6 +104,11 @@ struct_template_name : func params->struct{
 struct_template_name : func params=>struct{
 	//fields
 }
+
+////
+//instance definition
+module_name instance_name;
+instance_name : new module_name 
 
 ////
 //function usage
@@ -252,7 +257,7 @@ machine_name : seq{
 //wild card "_"
 
 //note: can we use wild carded parameter value?
-if machine.state is state_name(12xa03, _, _, 12){
+if machine.state is state_name(12'ha03, _, _, 12){
 
 }
 

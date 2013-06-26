@@ -64,7 +64,6 @@ RS_232_receiver : module{
 
     s_reg.clock = repeat(clock,3);
     s_reg.signal_in = repeat(signal_in,3);
-    test = s_reg[0].shift; 
     s_reg[0].shift = counter.value == counter_max>>2;
     s_reg[1].shift = counter.value == counter_max>>1;
     s_reg[2].shift = counter.value == counter_max>>1+counter_max>>2;

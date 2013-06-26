@@ -1,41 +1,11 @@
-func FA (bit A, bit B, bit Cin) -> (bit O, bit Cout):
-	//some code here	
-
-//full adder vector
-func FAV <metanum n> ([n] A, [n] B, bit Cin) ->
-	([n] O, bit Cout):
-	FA fa
-	FAV<n-1> fav
-
-	{fa.A, fav.A} = A
-	{fa.B, fav.B} = B
-	O = {fa.O, fav.O}
-
-	fav.Cin = Cin
-	fa.Cin = fav.Cout
-	Cout = fa.Cout
-
-func FAV_ARRAY <metanum n> ([n] A, [n] B, bit Cin) ->
-	([n] O, bit Cout):
-	
-	FA[n] fa
-	fa.A = A
-	fa.B = B
-
-	Cout = fa.[n-1].Cout
-	fa.Cin = {fa.Cout[n-1:], Cin}
-
-	O = fa.O
-
-
 ////
-//with rule2
+//function var.
 
 //note: Loocks not good...
 //note: Should use "module" instead of "func"?
 
 full_adder_n : func metanum n ->
-	bit[n] a -> bit[n] b -> bit c_in -> (bit[n] out, bit c_out)
+	bit[n] a -> bit[n] b -> bit c_in -> (bit[n] out, bit c_out){
 
 	full_adder fa
 	full_adder_n(n-1) fav
@@ -47,35 +17,47 @@ full_adder_n : func metanum n ->
 	fav.c_in <- c_in
 	fa.c_in <- fav.c_out
 	c_out <- fa.c_out
+}
 
 ////
 //module var.
 
-full_adder_n func metanum n -> module{
-	return module{
-		in bit[n] a
-		in bit[n] b
-		in bit c_in
+//recarsive
+full_adder_n : func metanum n => module{
+    in bit[n] a
+    in bit[n] b
+    in bit c_in
 
-		out o <- {fa.out, fav.out}
-		out c_out <- fa.c_out
+    out o[n] <- {fa.out, fav.out}
+    out c_out <- fa.c_out
 
-		private scope{
-			full_adder fa
-			full_adder_n(n-1) fav
+    full_adder fa
+    full_adder_n(n-1) fav
 
-			{fa.a, fav.a} <- a
-			{fa.b, fav.b} <- b
-			o <- {fa.out, fav.out}
+    {fa.a, fav.a} <- a
+    {fa.b, fav.b} <- b
+    o <- {fa.out, fav.out}
 
-			fav.c_in <- c_in
-			fa.c_in <- fav.c_out
-			c_out <- fa.c_out
-		}
-	}
+    fav.c_in <- c_in
+    fa.c_in <- fav.c_out
+    c_out <- fa.c_out
 }
-		
+	
+//module array
+full_adder_n : func metanum n => module{
+    in bit[n] a
+    in bit[n] b
+    in bit c_in
 
+    out o[n]
+    out c_out 
 
+	full_adder[n] fa
+	fa.a = a
+	fa.b = b
 
-		
+	c_out = fa.[n-1].c_out
+	fa.c_in = {fa.c_out[n-2:], c_in}
+
+	o = fa.o
+}

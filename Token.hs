@@ -56,7 +56,7 @@ skip_white_space = skipMany white_space
 
 double_char_symbol = ["->", "=>", "==", ">>", "<<", "++", "--"]
 single_char_symbol = [":", "=", "{", "}", "[", "]", ",", "(", ")"] ++
-	["+", "-", "*", "/", "^", ".", ";", "&", "|"]
+	["+", "-", "*", "/", "^", ".", ";", "&", "|", "~"]
 
 
 keywords = ["func", "struct", "module", "return", "in", "out"] ++
