@@ -1,5 +1,8 @@
 m : module{
-    in bit a;
-    out bit b;
+    bit a;
+    bit b;
+    in bit c;
+    out bit d;
     a = ~b;
+    c = ~d;
 }

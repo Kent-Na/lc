@@ -3,12 +3,13 @@ module Parse (
     Type(Unresolved_type, Array_type),
 
     Identifier,
-    Object(Undefined_object, Module, Instance_object, Value_object),
+    Object(Undefined_object, Module, Value_object),
 
     Bit_width,
     Bit_value,
 
-    Statement(Define, Assign, Return, If_chain, On),
+    Instance_mod(In, Out, Reg, Latch),
+    Statement(Define, Instantiate, Assign, Return, If_chain, On),
 
     Slice_range(Slice_range, Slice_point),
 
@@ -28,6 +29,7 @@ module Parse (
     parse_str,
 
     lc_assign,
+    lc_variable_define,
     parse_str_with
 )where
 
@@ -46,7 +48,7 @@ import Data.Map (Map)
 import qualified Data.Map
 
 -----------
--- primitive parsers
+-- Primitive token parsers
 
 type Token_parser = Parsec [(SourcePos, Token)] () 
 
@@ -72,9 +74,6 @@ is_predefined_token _ = False
 
 predefined_token = 
     satisfy_token is_predefined_token <?> "predefined_token"
-
-type_name_token :: Token_parser Token
-type_name_token = try user_token <|> try predefined_token <?> "type name"
 
 satisfy_token :: (Token -> Bool) -> (Token_parser Token)
 satisfy_token f = 
@@ -103,8 +102,7 @@ binary_op = choice (map s_token
     "binary operator"
 
 ----
---core data structures
-
+--Core data structures
 
 type Unresolved_id = String
 
@@ -113,9 +111,6 @@ type Identifier = String
 data Object 
     =Undefined_object
     |Module [Statement]
-    -- Created by the instance define statement.
-    -- Parameter is a idintifier of type.
-    |Instance_object Type 
     |Value_object Value
     deriving(Show)
 
@@ -127,12 +122,15 @@ data Type
 type Bit_width = Int
 type Bit_value = Int
 
--- a = b
---Left hand value must be assinable
---Assign lvalue rvalue
+data Instance_mod = In | Out | Reg | Latch
+    deriving(Show, Eq)
+
 data Statement
     =Define Identifier Object
-    |Instantiate Type Identifier
+    |Instantiate Type Identifier [Instance_mod]
+    -- a = b
+    --Left hand value must be assinable
+    --Assign lvalue rvalue
     |Assign SourcePos Value Value
     |Return SourcePos Value 
     -- If ifel else block.
@@ -166,51 +164,6 @@ data Value
 
 dummy_pos::SourcePos
 dummy_pos = newPos "<dummy>" 0 0
-
-----
---core parse states
-{-
-    type Parse_state = [Scope]
-
-data Scope 
-    = Scope 
-        (Map Identifier Object) 
-        --(Map String Variable)
-        [Statement]
-    deriving(Show)
-
-brank_state = [brank_scope] 
-brank_scope = Scope Data.Map.empty []
-
-push_state:: Token_parser()
-push_state = modifyState (\s -> brank_scope:s)
-
-pop_state:: Token_parser Scope
-pop_state = do
-    s <- getState
-    modifyState tail
-    return $ head s
-
-add_object::Identifier -> Object -> Token_parser ()
-add_object s d= do
-    st <- getState
-    if member_of_scope (head st)
-        then fail $ "Duplicative definition of " ++ s
-        else setState $ add_to_scope (head st) : tail st
-    where 
-        member_of_scope (Scope ds stmt)
-            = Data.Map.member s ds
-        add_to_scope (Scope ds stmt) 
-            = Scope (Data.Map.insert s d ds) stmt
-    
-add_statement::Statement -> Token_parser ()
-add_statement s = do
-    st <- getState
-    setState $ add_to_scope (head st) : tail st
-    where 
-        add_to_scope (Scope ds stmt) 
-            = Scope ds (s:stmt)
--}
 
 ----
 --Token parsers
@@ -256,10 +209,10 @@ lc_struct_define =
 lc_define_base::(Token_parser Object) 
               ->Token_parser Statement
 lc_define_base p = do
-    name <- user_token
+    User_token name <- user_token
     s_token ":"
     obj <- p 
-    return $ Define (value name) obj
+    return $ Define name obj
 
 -------
 --Blocks
@@ -277,6 +230,11 @@ lc_func_block = do
     s_token "}"
 
     return $ Undefined_object 
+
+lc_func_arg  = do
+    var_type <- lc_type
+    var_name <- user_token 
+    return (var_type, var_name)
 
 --struct { ... }
 lc_struct_block:: Token_parser Object 
@@ -298,8 +256,6 @@ lc_module_block = do
     stmts <- many $ choice [
         try lc_on_block,
         try lc_define,
-        try lc_port_define,
-        try lc_reg_define,
         try lc_assign,
         try lc_variable_define]
     s_token "}"
@@ -325,6 +281,7 @@ lc_on_block = do
         (Bit_array_value dummy_pos 1 1) 
         (concat stmts)
 
+--if a {} elif b {} else {}
 lc_if_elif_else_block:: Token_parser [Statement]
 lc_if_elif_else_block = do
     x <- lc_if_block
@@ -366,44 +323,51 @@ lc_else_block = do
     s_token "}"
     return (Bit_array_value dummy_pos 1 1, concat stmts)
 
--- in T a;
-lc_port_define::Token_parser [Statement]
-lc_port_define= do
-    choice [s_token "in", s_token "out"]
-    lc_variable_define
 
--- reg T a;
-lc_reg_define::Token_parser [Statement]
-lc_reg_define= do
-    s_token "reg"
-    lc_variable_define
+-- "reg" T a;
+lc_instance_mod::Token_parser Instance_mod
+lc_instance_mod = do
+    mod <- choice [
+        s_token "in", s_token "out",
+        s_token "reg", s_token "latch"]
+    case mod of
+        Keyword "in"    -> return In
+        Keyword "out"   -> return Out
+        Keyword "reg"   -> return Reg
+        Keyword "latch" -> return Latch
 
 -- T a;
 lc_variable_define::Token_parser [Statement]
 lc_variable_define = do
-    var_type <- lc_type_name 
-    var_name <- user_token 
-    --option (Meta_string_value "dummy") 
-    optional lc_variable_init
+    mods <- many lc_instance_mod
+    var_type <- lc_type
+    User_token var_name <- user_token 
+    option [] (lc_variable_init var_name)
     s_token ";"
-    return $ (:[]) $ Instantiate var_type (value var_name)
+    return $ (:[]) $ Instantiate var_type var_name mods
 
 -- T a "= a"
-lc_variable_init = do
+lc_variable_init::String -> Token_parser [Statement]
+lc_variable_init id = do
+    pos_eq <- getPosition
     s_token "="
-    lc_value
+    pos_val <- getPosition
+    r <- lc_value
+    return $ (:[]) $ Assign pos_eq (Id_value dummy_pos id) r
 
-lc_func_arg= do
-    var_type <- lc_type_name 
-    var_name <- user_token 
-    return (var_type, var_name)
 -- T
+lc_base_type:: Token_parser Type
+lc_base_type = do
+    t <- try user_token <|> try predefined_token <?> "type name"
+    case t of 
+        User_token       name -> return $ Unresolved_type name
+        Predefined_token name -> return $ Unresolved_type name
 -- T[a]
-lc_type_name:: Token_parser Type 
-lc_type_name = do
-    base <- type_name_token
+lc_type:: Token_parser Type 
+lc_type= do
+    base <- lc_base_type 
     array_args <- many lc_array_type_decolator
-    return $ foldl Array_type (Unresolved_type (value base)) array_args
+    return $ foldl Array_type base array_args
 
 -- part [a] of T[a] 
 lc_array_type_decolator:: Token_parser Value
@@ -446,20 +410,13 @@ lc_incliment = do
 ----
 --Value parsers
 
-lc_function_call:: Token_parser Value 
-lc_function_call = do 
-    pos <- getPosition
-    name <- user_token
-    s_token "("
-    params <- sepBy1 lc_value (s_token ",")
-    s_token ")"
-    return $ Function_call pos (value name) params
-
+-- a
 lc_value:: Token_parser Value
 lc_value= do
     value <- lc_value_with_prefix
     option value (lc_value_postfix value)
 
+-- a "+ b"
 lc_value_postfix:: Value -> Token_parser Value
 lc_value_postfix v = do
     v' <- choice[
@@ -479,12 +436,24 @@ lc_value_with_prefix = do
         try lc_variable,
         try lc_literal]
 
+-- a
 lc_variable:: Token_parser Value
 lc_variable = do
     pos <- getPosition
-    name <- user_token
-    return $ Id_value pos (value name)
+    User_token name <- user_token
+    return $ Id_value pos name
 
+-- f(a)
+lc_function_call:: Token_parser Value 
+lc_function_call = do 
+    pos <- getPosition
+    User_token name <- user_token
+    s_token "("
+    params <- sepBy1 lc_value (s_token ",")
+    s_token ")"
+    return $ Function_call pos name params
+
+-- 1'b1
 lc_literal:: Token_parser Value
 lc_literal = do
     pos <- getPosition
@@ -497,30 +466,25 @@ lc_literal = do
 lc_unaly_op::Token_parser Value
 lc_unaly_op = do
     pos <- getPosition
-    op <- unary_op 
+    Symbol op <- unary_op 
     val <- lc_value
-    return $ Unaly_operator pos (value op) val
+    return $ Unaly_operator pos op val
 
 --a + b
 lc_binary_op::Value -> Token_parser Value
 lc_binary_op left = do
     pos <- getPosition
-    op <- binary_op
+    Symbol op <- binary_op
     right <- lc_value_with_prefix
-    return $ Binaly_operator pos (value op) left right
+    return $ Binaly_operator pos op left right
 
 --a . b
 lc_field_access::Value -> Token_parser Value
 lc_field_access base= do
     pos <- getPosition
     s_token "."
-    name <- lc_field_name
+    User_token name <- user_token 
     return $ Field_access pos base name
-
-lc_field_name::Token_parser String
-lc_field_name= do
-    name <- user_token
-    return $ value name
 
 --{a, b, c}
 lc_cat_op:: Token_parser Value
@@ -557,7 +521,6 @@ lc_slice_range_d = do
     s_token ":"
     end <- lc_value
     return $ Slice_range begin end
-
 
 ----
 --for debug

@@ -7,14 +7,10 @@ import Data.Map (Map)
 import Data.Maybe
 import Text.Parsec.Pos
 
---type Enviroment = [Scope]
---type Lc_scope = Parse.Scope
-
 --Verilog data structure
 data Ve_scope = 
     Ve_scope
     deriving (Show)
-
 
 --name
 --tunnel_port
@@ -31,11 +27,9 @@ data Ve_module =
     Ve_module Identifier Ve_port
     deriving (Show)
 
-
-
 ----
 --Compiler Monad
-
+type ID_table = Map Identifier Identifier
 type Nest_depth = Int
 type UID = Int
 data C_error = C_error SourcePos String
@@ -43,6 +37,7 @@ data C_error = C_error SourcePos String
 data C_state = 
     C_state {
         --lc_scope :: [Lc_scope],
+        id_table :: ID_table,
         ve_scope :: [Ve_scope],
         next_uid :: UID,
         error_list :: [C_error],
@@ -73,11 +68,11 @@ compile c = do
     print (error_list st)
     return (out st)
     where
-        initial_state = C_state [] 0 [] 0 ""
+        initial_state = C_state Data.Map.empty [] 0 [] 0 ""
         (x, st) = (exec_compile c) initial_state
 
 do_test = do
-    case parse_str_with lc_assign "a = 1+2;" of
+    case parse_str_with lc_variable_define "bit a = 1+2;" of
         (Right [stmt])  -> compile (module_block_statement stmt)
         (Left err) -> return $ show err
         --"//parse err"
@@ -104,32 +99,43 @@ put_error:: SourcePos -> String -> Compiler ()
 put_error pos desc =
     mod_state f
     where
-        f (C_state b c errs e f) = C_state b c (err:errs) e f
+        f st = st{error_list = err : (error_list st)}
         err = C_error pos desc
     
 add_token::String -> Compiler()
 add_token tok = 
     mod_state f
     where 
-        f (C_state b c d e out) = C_state b c d e (out ++ " " ++ tok)
+        f st = st{out = (out st) ++ " " ++ tok}
 
 add_tokens::[String] -> Compiler()
 add_tokens tok = do 
     mapM add_token tok
     return ()
 
-new_id_entry:: String -> Compiler String
-new_id_entry id = return "bad_id"
---new_id_entry id = do
-    --s <- ve_scope
-    --uid <- next_uid
-    --Data.Map.insert (uid ++ id) id 
+gen_uid:: Compiler UID 
+gen_uid = do
+    st <- get_state
+    mod_state f
+    return (next_uid st)
+    where 
+        f st = st{next_uid = (next_uid st) + 1}
+
+new_id_entry:: String -> Compiler ()
+new_id_entry id = do
+    uid <- gen_uid
+    mod_state (f uid)
+    where 
+        new_id uid = "_lc" ++ (show uid) ++ "_" ++ id
+        f uid st = st{
+            id_table = Data.Map.insert id (new_id uid) (id_table st)}
 
 solve_id:: String -> Compiler String
 solve_id id = do
-    s <- get_state
+    st <- get_state
+    return $ Data.Map.findWithDefault "_00_bad_id" id (id_table st)
     --Scope s
-    return "bad_id"
+    --return "bad_id"
 
 top_level:: [Statement] -> Compiler () 
 top_level stmts = do
@@ -145,17 +151,57 @@ top_level_defines stmts = do
     
 top_level_statement:: Statement -> Compiler ()
 top_level_statement (Define id (Module stmts)) = do
-    add_tokens ["module", id, "(", ")", ";"]
-    mapM module_block_statement stmts
-    add_token "endmodule"
+    --add_tokens ["module", id, "(", ")", ";"]
+    --mapM module_block_statement stmts
+    --add_token "endmodule"
+    compile_object id (Module stmts)
     return ()
 
-compile_object:: Object -> Compiler ()
-compile_object (Module stmts) = do
-    
+compile_object:: Identifier -> Object -> Compiler ()
+compile_object m_id (Module stmts) = do
     --mapM new_id_entry (Data.Map.keys defs)
+    mapM new_id_entry (map id instances)
+    add_tokens ["module", m_id, "("]
+    intersperse module_io (add_token ",") ports 
+    add_tokens [")", ";"]
     mapM module_block_statement stmts 
+    add_token "endmodule"
     return ()
+    where 
+        is_port_def (Instantiate t id mods) = 
+            any (\s -> s == In || s == Out) mods
+        is_port_def _ = False
+        ports = filter is_port_def stmts
+
+        is_instantiate (Instantiate _ _ _) = True
+        is_instantiate _ = False 
+        instances = filter is_instantiate stmts 
+
+        id (Instantiate _ val _) = val
+
+intersperse :: (a -> Compiler b) -> Compiler c -> [a] -> Compiler ()
+intersperse f0 f1 [] = do
+    return ()
+intersperse f0 f1 (x:[]) = do
+    f0 x
+    return () 
+intersperse f0 f1 (x:xs) = do
+    f0 x
+    f1
+    intersperse f0 f1 xs
+    return () 
+    
+
+module_io :: Statement -> Compiler ()
+module_io (Instantiate t id mods) = do
+    id' <- solve_id id
+    case elem In mods of
+        True -> add_token "input"
+        _    -> return ()
+    case elem Out mods of
+        True -> add_token "output"
+        _    -> return ()
+    add_token id'
 
 --compile statement in module
 module_block_statement:: Statement -> Compiler ()
@@ -166,6 +212,9 @@ module_block_statement (Assign pos l r) = do
     value r
     add_token ";"
     return ()
+
+--module_block_statement (Instantiate t id mod) = do
+--    new_id_entry id
 
 module_block_statement _ = do
     return ()

@@ -9,7 +9,7 @@ module Token(
         Symbol,
         Bit_array_literal,
         Meta_number_literal),
-    value,
+    --value,
     lc_token, lc_tokenize_file,
 ) where
 
@@ -36,10 +36,10 @@ import Numeric
 type Unit = String
 
 data Token
-	=User_token          {value::String}
-	|Predefined_token    {value::String} 
-	|Keyword             {value::String} 
-	|Symbol              {value::String}
+	=User_token          String
+	|Predefined_token    String 
+	|Keyword             String 
+	|Symbol              String
 	|Bit_array_literal   Int Int 
 	|Meta_number_literal Int Unit 
 	deriving (Show, Eq)
