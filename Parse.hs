@@ -26,6 +26,7 @@ module Parse (
         Function_call,
         Undefined_value),
 
+    pos_of,
     parse_str,
 
     lc_assign,
@@ -126,8 +127,8 @@ data Instance_mod = In | Out | Reg | Latch
     deriving(Show, Eq)
 
 data Statement
-    =Define Identifier Object
-    |Instantiate Type Identifier [Instance_mod]
+    =Define SourcePos Identifier Object
+    |Instantiate SourcePos Type Identifier [Instance_mod]
     -- a = b
     --Left hand value must be assinable
     --Assign lvalue rvalue
@@ -164,6 +165,15 @@ data Value
 
 dummy_pos::SourcePos
 dummy_pos = newPos "<dummy>" 0 0
+
+class Parse_element e where
+    pos_of :: e -> SourcePos
+
+instance Parse_element Statement where
+    pos_of (Define pos _ _) = pos
+    pos_of (Instantiate pos _ _ _) = pos
+    pos_of (Assign pos _ _) = pos
+    pos_of (Return pos _) = pos
 
 ----
 --Token parsers
@@ -206,13 +216,14 @@ lc_module_define =
 lc_struct_define = 
     lc_define_base lc_struct_block 
 
-lc_define_base::(Token_parser Object) 
+lc_define_base::Token_parser Object
               ->Token_parser Statement
 lc_define_base p = do
+    pos <- getPosition
     User_token name <- user_token
     s_token ":"
     obj <- p 
-    return $ Define name obj
+    return $ Define pos name obj
 
 -------
 --Blocks
@@ -339,12 +350,13 @@ lc_instance_mod = do
 -- T a;
 lc_variable_define::Token_parser [Statement]
 lc_variable_define = do
+    pos <- getPosition
     mods <- many lc_instance_mod
     var_type <- lc_type
     User_token var_name <- user_token 
     option [] (lc_variable_init var_name)
     s_token ";"
-    return $ (:[]) $ Instantiate var_type var_name mods
+    return $ (:[]) $ Instantiate pos var_type var_name mods
 
 -- T a "= a"
 lc_variable_init::String -> Token_parser [Statement]

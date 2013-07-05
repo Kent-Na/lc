@@ -1,12 +1,4 @@
 
-//package_management
-
-import package_name;
-package package_name;
-export export_idintifier_name;
-export all;
-
-
 //note: There are 3 functions HDL have. Simulate, Generate, Describe.
 //note: Need document comment.
 
@@ -17,7 +9,11 @@ export all;
 /+ Nestable multi line comment. (from D language) +/
 
 ////
-//number
+//Number literals
+
+
+// bit[n]
+
 
 //integer(metanum)
 //These are not concatinatable with other data.
@@ -26,53 +22,98 @@ export all;
 //599
 
 
-//integer with bit width (bit[n])
+////
+//Types & literals
 
+//basic types
+bit      // 0|1
+logic    // 0|1|x|z
+bit[n]   // Array of "bit" with length "n"
+
+//literals
 1'1//ok
 10'400//ok
 1'45 //error 
+//"45" require 6 bit which is greater than 1 bit which is greater than 1 bit
 
 10'b10//binaly
 10'd90//decimal
 10'o72//oct
 24'hBeef20//hex
 
-//(bin, hex and oct)
 //integer can contain any number of underbar for visibility.
-
 8'b0110_11__10 // = 8'b01101110
-
-////
-//types
-
-bit = 0|1
-logic = 0|1|x|z
-bit[n] //Array of "bit", size "n"
 
 //metatypes
 metanum //143
-metastr 
-//"text" Can cast to bit[n] type. Result are UTF-8 encoded 
+metastr //"text" 
+//"metastr" type can be cast to bit[n] type. Result are UTF-8 encoded 
 //bit array. ex. "ab" == 16'h6162
 metatime //4s 4ns 4ms ...
 metafreq //10Hz 10MHz 5KHz
 
 auto //(from c++11)
 
+////
 //cast rule
 
 // meta_num -> bit
 // bit -> logic
 
 ////
-//scope
-//just variable scope
-scope{
-	//body
-
-	//and export variable
-	export bit[20] value_for_export;
+//struct definition
+struct_name : struct{
+    type_name_0 field_name_0;
+    type_name_1 field_name_1;
 }
+
+//////////
+//operaters
+//
+
+//binary operator
++ //add (bit[n] -> bit[n] -> bit[n])
+- //sub (bit[n] -> bit[n] -> bit[n])
+* //mul
+/ //div
+
+& //and (bit[n] -> bit[n] -> bit[n])
+| //or  (bit[n] -> bit[n] -> bit[n])
+^ //xor (bit[n] -> bit[n] -> bit[n])
+
+//the left and right value of binary operator must be same bit width.
+
+//unary operator
+& //and (bit[n] -> bit)
+| //or  (bit[n] -> bit) inclucive or
+^ //xor (bit[n] -> bit) parity
+~ //not (bit[n] -> bit[n])
+- //negate (bit[n] -> bit[n])
+
+//field access
+a.b
+
+//bit concatinate
+{1'1, 1'0} //2'10
+
+//field concatinate
+instance_name.{field_name_1, field_name_2}
+//= {instance_name.field_name_1, instance_name.field_name_2}
+
+//array access
+a[12]
+a[4:8] // = {a[4],a[5],a[6],a[7]}
+a[4,8] // = {a[4],a[8]}
+a[4:6,8] // = {a[4],a[5],a[8]}
+
+//assign
+= // right to left
+<- // same as '='
+-> // left to right
+=[metatime]
+<-[metatime] //delayed assign (simration only)
+
+a <-(5ns) 1'b0;
 
 ////
 //function definition
@@ -82,15 +123,6 @@ scope{
 
 function_name : func input_1 -> input_2 -> input_n -> output{
 	//body
-}
-
-////
-//struct definition
-
-//struct can contain meta value
-
-struct_name : struct{
-    type_name field_name;	
 }
 
 //template struct with func
@@ -108,7 +140,7 @@ struct_template_name : func params=>struct{
 ////
 //instance definition
 module_name instance_name;
-instance_name : new module_name 
+//instance_name : new module_name (deprecated)
 
 ////
 //function usage
@@ -146,46 +178,9 @@ var = select input{
     default -> c;
 }
 
-//////////
-//operaters
-//
-
-//field access
-a.b
-
-//bit concatinate
-{1'1, 1'0} //2'10
-
-//field concatinate
-instance_name.{field_name_1, field_name_2}
-
-//array access
-a[12]
-a[4:8] // = {a[4],a[5],a[6],a[7]}
-a[4,8] // = {a[4],a[8]}
-a[4:6,8] // = {a[4],a[5],a[8]}
-
-//assign
-= // right to left
-<- // same as '='
--> // left to right
-=[metatime]
-<-[metatime] //delayed assign
-
-a <-(5ns) 1'b0;
-
-//operater
-+ //add
-- //sub
-* //mul
-/ //div
-
-& //and
-| //or
-^ //xor
 
 ////
-//module(state less)
+//module(stateless)
 
 module_name : module{
 	in type field_name_1;
@@ -201,7 +196,7 @@ m_0 :module{
 }
 
 m_0[3] i_0;
-bit[3] var = i_0.f_0// = {i_0[0], i_0[1], i_0[1]}
+bit[3] var = i_0.f_0// = {i_0[0].f_0, i_0[1].f_0, i_0[2].f_0}
 
 ////
 //state machine(sync)
@@ -252,6 +247,9 @@ machine_name : seq{
 	}
 }
 
+////
+//Conditional statements
+
 //note: pattern mach?
 
 //wild card "_"
@@ -292,4 +290,22 @@ while signal{
 //"on init" block can be used to initialize reg/ratch.
 on init{
     //initialise reg/ratch here
+}
+
+//package_management
+
+import package_name;
+package package_name;
+export export_idintifier_name;
+export all;
+
+
+////
+//scope
+//just variable scope
+scope{
+	//body
+
+	//and export variable
+	export bit[20] value_for_export;
 }

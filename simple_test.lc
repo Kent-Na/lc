@@ -1,3 +1,11 @@
+m0 : module {
+    z = y;
+}
+
+m0 : module {
+
+}
+
 m : module{
     bit a;
     bit b;
