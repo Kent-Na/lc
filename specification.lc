@@ -1,3 +1,4 @@
+//The line start with //** is deprecated specification.
 
 //note: There are 3 functions HDL have. Simulate, Generate, Describe.
 //note: Need document comment.
@@ -9,21 +10,8 @@
 /+ Nestable multi line comment. (from D language) +/
 
 ////
-//Number literals
-
-
-// bit[n]
-
-
-//integer(metanum)
-//These are not concatinatable with other data.
-//1
-//30
-//599
-
-
-////
 //Types & literals
+//
 
 //basic types
 bit      // 0|1
@@ -31,15 +19,15 @@ logic    // 0|1|x|z
 bit[n]   // Array of "bit" with length "n"
 
 //literals
-1'1//ok
-10'400//ok
-1'45 //error 
+1'1    //ok
+10'400 //ok
+1'45   //error 
 //"45" require 6 bit which is greater than 1 bit which is greater than 1 bit
 
-10'b10//binaly
-10'd90//decimal
-10'o72//oct
-24'hBeef20//hex
+10'b10     //binaly
+10'd90     //decimal
+10'o72     //oct
+24'hBeef20 //hex
 
 //integer can contain any number of underbar for visibility.
 8'b0110_11__10 // = 8'b01101110
@@ -53,19 +41,6 @@ metatime //4s 4ns 4ms ...
 metafreq //10Hz 10MHz 5KHz
 
 auto //(from c++11)
-
-////
-//cast rule
-
-// meta_num -> bit
-// bit -> logic
-
-////
-//struct definition
-struct_name : struct{
-    type_name_0 field_name_0;
-    type_name_1 field_name_1;
-}
 
 //////////
 //operaters
@@ -81,7 +56,11 @@ struct_name : struct{
 | //or  (bit[n] -> bit[n] -> bit[n])
 ^ //xor (bit[n] -> bit[n] -> bit[n])
 
-//the left and right value of binary operator must be same bit width.
+== //equal     (bit[n] -> bit[n] -> bit)
+!= //not equal (bit[n] -> bit[n] -> bit)
+
+<> //bit concatinate (bit[n] -> bit[m] -> bit[n+m])
+   //ex. 2'b01 <> 2'b11 => 4'b0111
 
 //unary operator
 & //and (bit[n] -> bit)
@@ -90,15 +69,9 @@ struct_name : struct{
 ~ //not (bit[n] -> bit[n])
 - //negate (bit[n] -> bit[n])
 
-//field access
-a.b
-
 //bit concatinate
+{a, b, c}  //a <> b <> c
 {1'1, 1'0} //2'10
-
-//field concatinate
-instance_name.{field_name_1, field_name_2}
-//= {instance_name.field_name_1, instance_name.field_name_2}
 
 //array access
 a[12]
@@ -108,15 +81,71 @@ a[4:6,8] // = {a[4],a[5],a[8]}
 
 //assign
 = // right to left
-<- // same as '='
--> // left to right
-=[metatime]
-<-[metatime] //delayed assign (simration only)
+=[metatime] //delayed assign
 
-a <-(5ns) 1'b0;
+//**<- // same as '='
+//**-> // left to right
+//**<-[metatime] //delayed assign (simration only)
+
+a =[5ns] b; //Signal "a" forrow signal "b" with 5ns delay
 
 ////
-//function definition
+//Struct
+//
+
+//Define
+struct_name : struct{
+    type_name_0 field_name_0;
+    type_name_1 field_name_1;
+}
+
+//Field access
+struct {bit f} s;
+s.f
+
+//field concatinate
+instance_name.{field_name_1, field_name_2}
+// = {instance_name.field_name_1, instance_name.field_name_2}
+
+////
+//Module
+//
+
+//Module is unit of a circuit.
+
+module_name : module {
+    //Assignable from outside of module, but not from inside.
+    in bit reset;
+    in bit clock;
+    //Assignable from inside of module, but not from outside.
+    out bit output_port;
+    //Register.
+    reg bit[5] counter;
+
+    //Value assign. Left hand value must be assignable, 
+    //and same type as right hand value.
+    output_port = (counter == 5'b11111);
+
+    //On statement. Like verilogHDL's "always" block,
+    //"Statements in this block only applied
+    //on "positive edge" of signal "clock".
+    clock on posedge{
+        //If statement. Statements in this block only applied on
+        //specified condition.
+        if reset == 1'b0 {
+            counter = 5'b0;
+        }
+        else {
+            //Incriment "a ++" will be processed as "a = a + 1"
+            //on parse stage.
+            counter ++;
+        }
+    }
+}
+
+////
+//function 
+//
 
 //note: [Q]Can functions have multipul output?
 //note: [A]Use struct!!
@@ -177,7 +206,6 @@ var = select input{
     case y -> b;
     default -> c;
 }
-
 
 ////
 //module(stateless)
@@ -309,3 +337,6 @@ scope{
 	//and export variable
 	export bit[20] value_for_export;
 }
+
+////
+//cast rule
