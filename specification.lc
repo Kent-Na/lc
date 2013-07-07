@@ -83,11 +83,13 @@ a[4:6,8] // = {a[4],a[5],a[8]}
 = // right to left
 =[metatime] //delayed assign
 
+//ex.
+a =[5ns] b; //Signal "a" forrow signal "b" with 5ns delay
+
 //**<- // same as '='
 //**-> // left to right
 //**<-[metatime] //delayed assign (simration only)
 
-a =[5ns] b; //Signal "a" forrow signal "b" with 5ns delay
 
 ////
 //Struct
@@ -97,6 +99,8 @@ a =[5ns] b; //Signal "a" forrow signal "b" with 5ns delay
 struct_name : struct{
     type_name_0 field_name_0;
     type_name_1 field_name_1;
+    //Fields can have default value.
+    bit[12] random_bit = 12'ha73;
 }
 
 //Field access
@@ -113,14 +117,18 @@ instance_name.{field_name_1, field_name_2}
 
 //Module is unit of a circuit.
 
-module_name : module {
+counter_and_adder : module {
     //Assignable from outside of module, but not from inside.
     in bit reset;
     in bit clock;
     //Assignable from inside of module, but not from outside.
     out bit output_port;
-    //Register.
+    //5 bit Register.
     reg bit[5] counter;
+
+    in bit[4] adder_in_a;
+    in bit[4] adder_in_b;
+    out bit[4] adder_out;
 
     //Value assign. Left hand value must be assignable, 
     //and same type as right hand value.
@@ -130,7 +138,7 @@ module_name : module {
     //"Statements in this block only applied
     //on "positive edge" of signal "clock".
     clock on posedge{
-        //If statement. Statements in this block only applied on
+        //If-elif-else statement. Statements in this block only applied on
         //specified condition.
         if reset == 1'b0 {
             counter = 5'b0;
@@ -141,35 +149,71 @@ module_name : module {
             counter ++;
         }
     }
+
+    //You can define module inside module definition.
+    adder : module{
+        in bit[4] input_b;
+        //And can use signal at outer module
+        adder_out = adder_in_a + input_b;
+    }
+
+    //Instantiate module.
+    //If you instantiate 2 "adder" modules, error will occur on compile
+    //phase. Because of 2 "assignment" to "adder_out" signal.
+    adder the_adder;
+    
+    //Field access and assign.
+    adder.input_b = adder_in_b;
 }
+
+//Module array
+module_name[10] instance_name;
+
+//Module array signal auto concatinate
+m_0 :module{
+    in bit f_0;
+}
+
+m_0[3] i_0;
+bit[3] var = i_0.f_0// = {i_0[0].f_0, i_0[1].f_0, i_0[2].f_0}
 
 ////
 //function 
 //
 
-//note: [Q]Can functions have multipul output?
-//note: [A]Use struct!!
-
-function_name : func input_1 -> input_2 -> input_n -> output{
-	//body
+function_xor : func bit input -> bit more_input -> bit{
+    return input^more_input; 
 }
 
-//template struct with func
-struct_template_name : func params->struct{
-	return struct{
-		//fields
+//Functions can also return another function, module, struct and etc.
+v_length_adder : func metanum width -> module{
+    //Variable bit width ALU module. Output sum of inputs.
+	return module{
+        in bit[width] input_a;
+        in bit[width] input_b;
+        in bit is_add; //1 -> add, 0 ->subtruct
+        out bit[width] output;
+        
+        if is_add {
+            output = input_a + input_b;
+        }
+        else{
+            output = input_a - input_b;
+        }
 	}
 }
 
-//syntax suger. It reduce nest level by 1.
-struct_template_name : func params=>struct{
-	//fields
+//Syntax suger. It reduce a nest level.
+struct_template : func metanum width => struct{
+    bit[width] field;
 }
 
-////
-//instance definition
-module_name instance_name;
-//instance_name : new module_name (deprecated)
+//Function "call"
+struct_template(21) instance_name;
+
+  ///////////////////////////////////////
+ // Under construction zone           //
+///////////////////////////////////////
 
 ////
 //function usage
@@ -177,16 +221,16 @@ module_name instance_name;
 // c lang style call
 outputs = function_name(inputs)
 
-// hdl style call (use as module)
-function_name instance_name(inputs) // set input
-outputs = instance_name
-
 //lisp style call
 outputs = (function_name inputs)
 
 // compose
 //inputs->function_name_1->function_name_2->outputs//if possible...
 outputs = function_name_2(function_name_1(inputs))
+
+//** hdl style call (use as module)
+//**function_name instance_name(inputs) // set input
+//**outputs = instance_name
 
 ////
 //if and select
@@ -201,11 +245,6 @@ else{
 
 }
 
-var = select input{
-    case x -> a;
-    case y -> b;
-    default -> c;
-}
 
 ////
 //module(stateless)
@@ -215,16 +254,6 @@ module_name : module{
 	out type field_name_2;
 }
 
-//Module array
-module_name[10] instance_name;
-
-//Module array signal auto concatinate
-m_0 :module{
-    in bit f_0;
-}
-
-m_0[3] i_0;
-bit[3] var = i_0.f_0// = {i_0[0].f_0, i_0[1].f_0, i_0[2].f_0}
 
 ////
 //state machine(sync)
@@ -320,6 +349,33 @@ on init{
     //initialise reg/ratch here
 }
 
+
+//Single line if concept
+
+result = 
+    if cond -> 
+        value_0
+    else ->
+        value_1
+
+//Select statement concept
+//Value var
+var = select input{
+    case x -> a;
+    case y -> b;
+    default -> c;
+}
+
+//Statement var
+select input{
+    case x {
+        a = 4'h2
+    }
+    default {
+        b = 4'hc
+    }
+}
+
 //package_management
 
 import package_name;
@@ -340,3 +396,10 @@ scope{
 
 ////
 //cast rule
+
+
+//self Q and A.
+
+//note: [Q]Can functions have multipul output?
+//note: [A]Use struct!!
+

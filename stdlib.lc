@@ -1,21 +1,20 @@
+////
 //std module and function list
 
-len : func bit[] value -> metanum 
 //Return length of @value
 //ex. (len 3'b012) == 3
+len : func bit[] value -> metanum 
 
-repeat : func bit[] value -> metanum count -> bit[len(value)*count] 
 //Return @value repeated by @count times
 //ex. (repeat 3'b001 2) == 1'b001001
+repeat : func bit[] value -> metanum count -> bit[len(value)*count] 
 
 
-
-
+//@output signal send 1 clock HIGH pulse
 timer : func metafreq in_freq -> metatime t => module{
     in bit clock;
     out bit output;
 }
-//@output signal send 1 clock HIGH pulse
 
 counter : func metanum bit_width => module{
     in bit reset;
@@ -28,13 +27,16 @@ shift_register : func metanum bit_width => module{
     out bit[bit_width] output;
 }
 
+//simulation only
+//Output clock with freqency @fq.
 clock_generator : func metafreq fq => module{
     out bit clock;
 }
-//simulation only
-//Output clock with freqency @fq.
 
+//std external_io module
 external_io : func metastr loc => module{
     bit bit output;
 }
-//std external_io module
+
+//function version of if
+f_if : func bit condition -> a on_true -> a on_false -> a
