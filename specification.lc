@@ -46,6 +46,13 @@ auto //(from c++11)
 //operaters
 //
 
+//unary operator
+& //and (bit[n] -> bit)
+| //or  (bit[n] -> bit) inclucive or
+^ //xor (bit[n] -> bit) parity
+~ //not (bit[n] -> bit[n])
+- //negate (bit[n] -> bit[n])
+
 //binary operator
 + //add (bit[n] -> bit[n] -> bit[n])
 - //sub (bit[n] -> bit[n] -> bit[n])
@@ -61,13 +68,6 @@ auto //(from c++11)
 
 <> //bit concatinate (bit[n] -> bit[m] -> bit[n+m])
    //ex. 2'b01 <> 2'b11 => 4'b0111
-
-//unary operator
-& //and (bit[n] -> bit)
-| //or  (bit[n] -> bit) inclucive or
-^ //xor (bit[n] -> bit) parity
-~ //not (bit[n] -> bit[n])
-- //negate (bit[n] -> bit[n])
 
 //bit concatinate
 {a, b, c}  //a <> b <> c

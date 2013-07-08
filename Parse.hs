@@ -25,7 +25,8 @@ module Parse (
         Cat_operator,
         Function_call,
         Undefined_value),
-
+    
+    dummy_pos,
     pos_of,
     parse_str,
 

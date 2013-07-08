@@ -1,4 +1,6 @@
+//Duplicative id
 m0 : module {
+    //Undefined id
     z = y;
 }
 
@@ -6,11 +8,18 @@ m0 : module {
 
 }
 
-m : module{
+m1 : module{
     bit a;
     bit b;
     in bit c;
     out bit d;
     a = ~b;
     c = ~d;
+}
+
+m2 : module{
+    bit     a;
+    bit[10] b;
+    //Type missmatch
+    a = b;
 }

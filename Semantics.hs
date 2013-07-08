@@ -18,13 +18,13 @@ data S_state = S_state Enviroment Nest_depth [S_error]
 data S_port_direction = S_in | S_out
 data S_type
     = Type_function
-    | Type_partial_applied_function
-    | Type_module   S_scope
+    | Type_module
     | Type_array    Int   S_type
-    | Type_struct   [S_type]
+    | Type_struct
     | Type_bit
     | Type_logic
-    deriving (Show)
+    | Type_undefined
+    deriving (Show, Eq)
 
 ----
 --S_scope
@@ -35,6 +35,9 @@ type Type_map = Map Identifier S_type
 
 data S_scope = S_scope Id_map Type_map
     deriving (Show)
+
+brank_scope = S_scope Data.Map.empty Data.Map.empty
+
 type Enviroment = [S_scope]
 type Nest_depth = Int
 
@@ -54,6 +57,9 @@ pop_env = mod_env tail
 push_env :: S_scope -> Semantics ()
 push_env scope = mod_env (\old -> scope:old)
 
+get_scope :: Semantics S_scope
+get_scope = liftM head get_env
+
 mod_scope :: (S_scope -> S_scope) -> Semantics ()
 mod_scope f = mod_env (\env -> (f $ head env):(tail env))
 
@@ -61,6 +67,7 @@ mod_scope f = mod_env (\env -> (f $ head env):(tail env))
 insert_type_info :: Identifier -> S_type -> Semantics()
 insert_type_info id t = 
    mod_scope (\ (S_scope ids ts) -> S_scope ids (Data.Map.insert id t ts)) 
+
 mod_error :: ([S_error] -> [S_error]) -> Semantics ()
 mod_error f = modify (\ (S_state env d err) -> S_state env d (f err))
 
@@ -96,6 +103,36 @@ id_of :: Statement -> Identifier
 id_of (Define _ id _) = id
 id_of (Instantiate _ _ id _)  =id
 id_of _ = "unknown_id"
+
+type_of :: Statement -> Semantics S_type
+type_of (Define _ _ (Module _)) = return $ Type_module
+type_of (Define _ _ _)          = return $ Type_undefined 
+type_of (Instantiate _ t _ _)   = 
+    conv t
+    where 
+        conv :: Type -> Semantics S_type
+        conv (Array_type t length_val) = do
+            t' <- conv t
+            return $ Type_array 0 t'
+        conv (Unresolved_type "bit")   = return $ Type_bit
+        conv (Unresolved_type "logic") = return $ Type_logic
+        conv (Unresolved_type t_id)    = solve_type t_id
+
+--Non array type can be used as 1 length array
+is_array_of :: S_type -> S_type -> Bool
+is_array_of base (Type_array _ t) = (base == t)
+is_array_of base t = (base == t) 
+
+solve_type :: Identifier -> Semantics S_type
+solve_type id = do
+    S_scope ids tps <- get_scope
+    case Data.Map.lookup id tps of
+        (Just t)  -> return t
+        (Nothing) -> case Data.Map.lookup id ids of
+            (Just stmt) -> type_of stmt
+            (Nothing)   -> (put_error dummy_pos
+                ("(i)Missing definition of id " ++ id ++ ".")) >>
+                return Type_undefined
 
 identifier_map :: [Statement] -> Id_map
 identifier_map stmts = 
@@ -151,6 +188,7 @@ is_id_defined (On cond_val pre_val post_val _) = do
 is_id_defined _ = 
     return ()
 
+--Test id is defined or not.
 test_id_value  :: Value -> Semantics()
 test_id_value (Unaly_operator _ _ val) = 
     test_id_value val
@@ -181,6 +219,16 @@ test_id_value (Id_value pos id) = do
 test_id_value _ = return ()
 
 
+is_type_correct :: Statement -> Semantics ()
+is_type_correct (Assign pos lval rval) = do
+    ltype <- solve_value_type lval
+    rtype <- solve_value_type rval
+    put_error_if (ltype /= rtype) pos 
+        ("Type missmatch. Left and right value of assignment " ++
+         "must be same type.")
+is_type_correct _ = 
+    return ()
+
 solve_id :: Identifier -> Semantics (Maybe Statement)
 solve_id id = do
     env <- get_env
@@ -191,20 +239,39 @@ solve_id id = do
             case head env of
                 (S_scope ids _) -> ids
 
-solve_value_type :: Value -> Semantics ()
-test_id_value (Unaly_operator _ _ val) = 
-    test_id_value val
-test_id_value (Binaly_operator _ _ lval rval) = do
+solve_value_type :: Value -> Semantics S_type
+solve_value_type (Bit_array_value pos l v) = 
+    return $ Type_array l Type_bit
+solve_value_type (Id_value pos id) = do
+    solve_type id
+solve_value_type (Unaly_operator pos op val) = do
+    val_type <- solve_value_type val
+    case op of
+        (_) | is_to_bit op -> case val_type of
+            (_) | is_array_of Type_bit val_type-> return Type_bit
+            (_) -> put_error pos 
+                ("Type missmatch. Operand of unaly operator " ++ op ++
+                 " must be bit array") >> return Type_undefined
+        (_) | is_to_bit_a op -> case val_type of
+            (_) | is_array_of Type_bit val_type -> return $ val_type
+            (_) -> put_error pos 
+                ("Type missmatch. Operand of unaly operator " ++ op ++
+                 " must be bit array") >> return Type_undefined
+    where
+        is_to_bit   op = elem op ["&", "|", "^"]
+        is_to_bit_a op = elem op ["~", "-"]
+{-
+solve_value_type (Binaly_operator _ _ lval rval) = do
     test_id_value lval
     test_id_value rval
-test_id_value (Field_access _ val _) =
+solve_value_type (Field_access _ val _) =
     test_id_value val
-test_id_value (Slice_operator _ val _) = 
+solve_value_type (Slice_operator _ val _) = 
     test_id_value val
-test_id_value (Cat_operator _ vals) = do
+solve_value_type (Cat_operator _ vals) = do
     mapM test_id_value vals
     return ()
-test_id_value (Function_call pos id vals) = do
+solve_value_type (Function_call pos id vals) = do
     mapM test_id_value vals
     def <- solve_id id 
     case def of
@@ -212,13 +279,8 @@ test_id_value (Function_call pos id vals) = do
         Nothing  -> put_error pos
             ("Missing definition of id " ++ id ++ ".")
     return ()
-test_id_value (Id_value pos id) = do
-    def <- solve_id id 
-    case def of
-        (Just _) -> return ()
-        Nothing  -> put_error pos
-            ("Missing definition of id " ++ id ++ ".")
-test_id_value _ = return ()
+solve_value_type _ = return ()
+-}
 
 with_new_scope :: S_scope -> Semantics a -> Semantics a
 with_new_scope scope sem = do
@@ -229,7 +291,8 @@ with_new_scope scope sem = do
     
 statements :: [Statement] -> Semantics ()
 statements stmts = do
-    mapM is_id_defined stmts
+    mapM is_id_defined   stmts
+    mapM is_type_correct stmts
     mapM process_stmt stmts
     return ()
     where
@@ -241,6 +304,12 @@ statements stmts = do
 
 semantics :: [Statement] -> Semantics [S_error]
 semantics stmts = do 
+    -- unique id
+    -- shadow id
+    -- defined id
+    -- type
+    -- assign lvalue
+    -- register clock
     is_id_unique (defines stmts)
     with_new_scope scope (statements stmts)
     get_error
