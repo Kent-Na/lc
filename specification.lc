@@ -359,14 +359,14 @@ result =
         value_1
 
 //Select statement concept
-//Value var
+//Value varsion
 var = select input{
     case x -> a;
     case y -> b;
     default -> c;
 }
 
-//Statement var
+//Statement varsion
 select input{
     case x {
         a = 4'h2
@@ -375,6 +375,14 @@ select input{
         b = 4'hc
     }
 }
+
+//struct modificater
+m0 : struct{
+    bit a;
+}
+m1 : add_field(m0, in bit, "b")
+a m1;
+a.b = 1'b1;
 
 //package_management
 

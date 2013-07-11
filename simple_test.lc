@@ -23,3 +23,19 @@ m2 : module{
     //Type missmatch
     a = b;
 }
+
+m3 : module{
+    //a.a.a = 8'b0;
+    m3_0 : module{
+        m3_1 a;
+        bit[8] b;
+    }
+
+    m3_1 : module{
+        bit[8] a;
+    }
+
+    m3_0 a;
+    a.a.a = 8'b0;
+}
+    

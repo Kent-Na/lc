@@ -3,7 +3,7 @@ module Semantics where
 
 import Parse
 import qualified Data.Map
-import Data.Map (Map)
+import Data.Map (Map, insert)
 import Data.Maybe
 import Text.Parsec.Pos
 import Control.Monad.State
@@ -19,21 +19,33 @@ data S_port_direction = S_in | S_out
 data S_type
     = Type_function
     | Type_module
-    | Type_array    Int   S_type
     | Type_struct
+    | Type_instance Identifier
+    | Type_array    Int   S_type
     | Type_bit
     | Type_logic
     | Type_undefined
     deriving (Show, Eq)
 
+data S_value
+    = Value_module    S_scope
+    | Value_instance
+    | Value_array     [S_value]
+    | Value_bit
+    | Value_logic
+    | Value_undefined
+    deriving (Show)
+
+data S_object = S_object S_type S_value
 ----
 --S_scope
 
 --id-object map. Duplicative definitions will be deleted.
-type Id_map   = Map Identifier Statement
-type Type_map = Map Identifier S_type
+type Id_map    = Map Identifier Statement
+type Type_map  = Map Identifier S_type
+type Value_map = Map Identifier S_value
 
-data S_scope = S_scope Id_map Type_map
+data S_scope = S_scope Id_map Type_map Value_map
     deriving (Show)
 
 brank_scope = S_scope Data.Map.empty Data.Map.empty
@@ -64,9 +76,15 @@ mod_scope :: (S_scope -> S_scope) -> Semantics ()
 mod_scope f = mod_env (\env -> (f $ head env):(tail env))
 
 --Insert the type info entry to current scope
-insert_type_info :: Identifier -> S_type -> Semantics()
-insert_type_info id t = 
-   mod_scope (\ (S_scope ids ts) -> S_scope ids (Data.Map.insert id t ts)) 
+register_type :: Identifier -> S_type -> Semantics()
+register_type id t = 
+   mod_scope (\ (S_scope ids ts vs) -> S_scope ids (insert id t ts) vs) 
+
+register_value :: Identifier -> S_value -> Semantics()
+register_value id v = do
+   mod_scope (\ (S_scope ids ts vs) -> S_scope ids ts (insert id v vs)) 
+   put_error dummy_pos
+        ("(i)Value of id " ++ id ++ " was registered.")
 
 mod_error :: ([S_error] -> [S_error]) -> Semantics ()
 mod_error f = modify (\ (S_state env d err) -> S_state env d (f err))
@@ -116,23 +134,44 @@ type_of (Instantiate _ t _ _)   =
             return $ Type_array 0 t'
         conv (Unresolved_type "bit")   = return $ Type_bit
         conv (Unresolved_type "logic") = return $ Type_logic
-        conv (Unresolved_type t_id)    = solve_type t_id
+        conv (Unresolved_type t_id)    = return $ Type_instance t_id
 
 --Non array type can be used as 1 length array
 is_array_of :: S_type -> S_type -> Bool
 is_array_of base (Type_array _ t) = (base == t)
 is_array_of base t = (base == t) 
 
-solve_type :: Identifier -> Semantics S_type
-solve_type id = do
-    S_scope ids tps <- get_scope
+--Find type in specified scope. Return Type_undefined if it was not
+--defined.
+solve_type_in :: S_scope -> Identifier -> Semantics S_type
+solve_type_in (S_scope ids tps _) id = do
     case Data.Map.lookup id tps of
         (Just t)  -> return t
         (Nothing) -> case Data.Map.lookup id ids of
-            (Just stmt) -> type_of stmt
+            (Just stmt) -> do
+                out_type <- type_of stmt
+                register_type id out_type
+                return out_type
             (Nothing)   -> (put_error dummy_pos
-                ("(i)Missing definition of id " ++ id ++ ".")) >>
+                ("(i)Missing type definition of id " ++ id ++ ".")) >>
+                (put_error dummy_pos ("(i)s = " ++ (show ids))) >>
                 return Type_undefined
+
+--Find type in current enviroment.
+--todo: Recursive search
+solve_type :: Identifier -> Semantics S_type
+solve_type id = do
+    scope  <- get_scope
+    solve_type_in scope id
+
+solve_value :: Identifier -> Semantics S_value
+solve_value id = do
+    S_scope ids tps vs <- get_scope
+    case Data.Map.lookup id vs of
+        (Just v)  -> return v
+        (Nothing) -> (put_error dummy_pos
+            ("(i)Missing value definition of id " ++ id ++ ".")) >>
+            return Value_undefined
 
 identifier_map :: [Statement] -> Id_map
 identifier_map stmts = 
@@ -226,6 +265,10 @@ is_type_correct (Assign pos lval rval) = do
     put_error_if (ltype /= rtype) pos 
         ("Type missmatch. Left and right value of assignment " ++
          "must be same type.")
+    put_error pos 
+        ("type(lvalue) = " ++ (show ltype))
+    put_error pos 
+        ("type(rvalue) = " ++ (show rtype))
 is_type_correct _ = 
     return ()
 
@@ -237,7 +280,7 @@ solve_id id = do
         id_map :: Enviroment -> Id_map
         id_map env = 
             case head env of
-                (S_scope ids _) -> ids
+                (S_scope ids _ _) -> ids
 
 solve_value_type :: Value -> Semantics S_type
 solve_value_type (Bit_array_value pos l v) = 
@@ -260,12 +303,26 @@ solve_value_type (Unaly_operator pos op val) = do
     where
         is_to_bit   op = elem op ["&", "|", "^"]
         is_to_bit_a op = elem op ["~", "-"]
+solve_value_type (Field_access pos val id) = do
+    val_type <- solve_value_type val
+    case val_type of
+        Type_instance t_id -> do
+            t_value <- solve_value t_id
+            --t_value is type value of val
+            case t_value of
+                Value_module scope ->
+                    solve_type_in scope id
+                _ -> do
+                    put_error dummy_pos "(i)Fail at type."
+                    return Type_undefined 
+        _ -> do
+            put_error dummy_pos "(i)Fail at type value."
+            return Type_undefined 
+            
 {-
 solve_value_type (Binaly_operator _ _ lval rval) = do
     test_id_value lval
     test_id_value rval
-solve_value_type (Field_access _ val _) =
-    test_id_value val
 solve_value_type (Slice_operator _ val _) = 
     test_id_value val
 solve_value_type (Cat_operator _ vals) = do
@@ -282,27 +339,33 @@ solve_value_type (Function_call pos id vals) = do
 solve_value_type _ = return ()
 -}
 
-with_new_scope :: S_scope -> Semantics a -> Semantics a
+with_new_scope :: S_scope -> Semantics a -> Semantics S_scope
 with_new_scope scope sem = do
     push_env scope
-    out <- sem
+    sem
+    env <- get_env
     pop_env
-    return out
+    return $ head env
     
 statements :: [Statement] -> Semantics ()
 statements stmts = do
     mapM is_id_defined   stmts
-    mapM is_type_correct stmts
     mapM process_stmt stmts
+    mapM is_type_correct stmts
     return ()
     where
         process_stmt (Define pos id (Module sub_stmts)) = do
-            semantics sub_stmts
+            scope <- semantics sub_stmts
+            register_value id (Value_module scope)
+            val <- solve_value id
+            --put_error dummy_pos
+             --   ("(i)Value of id " ++ id ++ " : " ++
+              --   (show val) ++ " was registered.")
             return ()
         process_stmt _ = 
             return ()
 
-semantics :: [Statement] -> Semantics [S_error]
+semantics :: [Statement] -> Semantics S_scope
 semantics stmts = do 
     -- unique id
     -- shadow id
@@ -312,15 +375,15 @@ semantics stmts = do
     -- register clock
     is_id_unique (defines stmts)
     with_new_scope scope (statements stmts)
-    get_error
     where
-        scope = S_scope (identifier_map stmts) Data.Map.empty
+        scope = S_scope (identifier_map stmts) Data.Map.empty Data.Map.empty
 
 do_test = do
     s <- readFile "simple_test.lc"
     case parse_str s of
         (Right stmts) 
-            -> putStr $ funcy_show $ evalState (semantics stmts) i_state
+            -> putStr $ funcy_show $ 
+                evalState (semantics stmts >> get_error) i_state
         (Left  err  ) -> print err
     where
         i_state = S_state [] 0 []
