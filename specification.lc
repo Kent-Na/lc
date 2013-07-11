@@ -1,3 +1,7 @@
+//Language "lc" specification.
+//Design logic circuits with power of functional programming.
+
+
 //The line start with //** is deprecated specification.
 
 //note: There are 3 functions HDL have. Simulate, Generate, Describe.

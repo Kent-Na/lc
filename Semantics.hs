@@ -31,11 +31,13 @@ data S_value
     = Value_module    S_scope
     | Value_instance
     | Value_array     [S_value]
-    | Value_bit
-    | Value_logic
+    | Value_bit       S_logic
+    | Value_logic     S_logic
     | Value_undefined
     deriving (Show)
 
+data S_logic = S_0 | S_1 | S_X | S_Z
+    
 data S_object = S_object S_type S_value
 ----
 --S_scope
@@ -83,8 +85,8 @@ register_type id t =
 register_value :: Identifier -> S_value -> Semantics()
 register_value id v = do
    mod_scope (\ (S_scope ids ts vs) -> S_scope ids ts (insert id v vs)) 
-   put_error dummy_pos
-        ("(i)Value of id " ++ id ++ " was registered.")
+   --put_error dummy_pos
+    --    ("(i)Value of id " ++ id ++ " was registered.")
 
 mod_error :: ([S_error] -> [S_error]) -> Semantics ()
 mod_error f = modify (\ (S_state env d err) -> S_state env d (f err))
@@ -228,7 +230,7 @@ is_id_defined _ =
     return ()
 
 --Test id is defined or not.
-test_id_value  :: Value -> Semantics()
+test_id_value  :: Expr -> Semantics()
 test_id_value (Unaly_operator _ _ val) = 
     test_id_value val
 test_id_value (Binaly_operator _ _ lval rval) = do
@@ -260,15 +262,15 @@ test_id_value _ = return ()
 
 is_type_correct :: Statement -> Semantics ()
 is_type_correct (Assign pos lval rval) = do
-    ltype <- solve_value_type lval
-    rtype <- solve_value_type rval
+    ltype <- solve_expr_type lval
+    rtype <- solve_expr_type rval
     put_error_if (ltype /= rtype) pos 
         ("Type missmatch. Left and right value of assignment " ++
          "must be same type.")
-    put_error pos 
-        ("type(lvalue) = " ++ (show ltype))
-    put_error pos 
-        ("type(rvalue) = " ++ (show rtype))
+    --put_error pos 
+        --("type(lvalue) = " ++ (show ltype))
+    --put_error pos 
+        --("type(rvalue) = " ++ (show rtype))
 is_type_correct _ = 
     return ()
 
@@ -282,13 +284,14 @@ solve_id id = do
             case head env of
                 (S_scope ids _ _) -> ids
 
-solve_value_type :: Value -> Semantics S_type
-solve_value_type (Bit_array_value pos l v) = 
+--Calculae type of expression.
+solve_expr_type :: Expr -> Semantics S_type
+solve_expr_type (Bit_array_value pos l v) = 
     return $ Type_array l Type_bit
-solve_value_type (Id_value pos id) = do
+solve_expr_type (Id_value pos id) = do
     solve_type id
-solve_value_type (Unaly_operator pos op val) = do
-    val_type <- solve_value_type val
+solve_expr_type (Unaly_operator pos op val) = do
+    val_type <- solve_expr_type val
     case op of
         (_) | is_to_bit op -> case val_type of
             (_) | is_array_of Type_bit val_type-> return Type_bit
@@ -303,12 +306,12 @@ solve_value_type (Unaly_operator pos op val) = do
     where
         is_to_bit   op = elem op ["&", "|", "^"]
         is_to_bit_a op = elem op ["~", "-"]
-solve_value_type (Field_access pos val id) = do
-    val_type <- solve_value_type val
+solve_expr_type (Field_access pos val id) = do
+    val_type <- solve_expr_type val
     case val_type of
         Type_instance t_id -> do
             t_value <- solve_value t_id
-            --t_value is type value of val
+            --t_value is type Expr of val
             case t_value of
                 Value_module scope ->
                     solve_type_in scope id
@@ -318,17 +321,16 @@ solve_value_type (Field_access pos val id) = do
         _ -> do
             put_error dummy_pos "(i)Fail at type value."
             return Type_undefined 
-            
 {-
-solve_value_type (Binaly_operator _ _ lval rval) = do
+solve_expr_type (Binaly_operator _ _ lval rval) = do
     test_id_value lval
     test_id_value rval
-solve_value_type (Slice_operator _ val _) = 
+solve_expr_type (Slice_operator _ val _) = 
     test_id_value val
-solve_value_type (Cat_operator _ vals) = do
+solve_expr_type (Cat_operator _ vals) = do
     mapM test_id_value vals
     return ()
-solve_value_type (Function_call pos id vals) = do
+solve_expr_type (Function_call pos id vals) = do
     mapM test_id_value vals
     def <- solve_id id 
     case def of
@@ -336,7 +338,7 @@ solve_value_type (Function_call pos id vals) = do
         Nothing  -> put_error pos
             ("Missing definition of id " ++ id ++ ".")
     return ()
-solve_value_type _ = return ()
+solve_expr_type _ = return ()
 -}
 
 with_new_scope :: S_scope -> Semantics a -> Semantics S_scope
@@ -359,7 +361,7 @@ statements stmts = do
             register_value id (Value_module scope)
             val <- solve_value id
             --put_error dummy_pos
-             --   ("(i)Value of id " ++ id ++ " : " ++
+             --   ("(i)Expr of id " ++ id ++ " : " ++
               --   (show val) ++ " was registered.")
             return ()
         process_stmt _ = 

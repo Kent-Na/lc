@@ -13,7 +13,7 @@ module Parse (
 
     Slice_range(Slice_range, Slice_point),
 
-    Value(
+    Expr(
         Bit_array_value,
         Meta_number_value,
         Meta_string_value,
@@ -113,12 +113,12 @@ type Identifier = String
 data Object 
     =Undefined_object
     |Module [Statement]
-    |Value_object Value
+    |Value_object Expr
     deriving(Show)
 
 data Type
     =Unresolved_type Identifier 
-    |Array_type Type Value
+    |Array_type Type Expr
     deriving(Show)
 
 type Bit_width = Int
@@ -131,36 +131,36 @@ data Statement
     =Define SourcePos Identifier Object
     |Instantiate SourcePos Type Identifier [Instance_mod]
     -- a = b
-    --Left hand value must be assinable
+    --Left hand Expr must be assinable
     --Assign lvalue rvalue
-    |Assign SourcePos Value Value
-    |Return SourcePos Value 
+    |Assign SourcePos Expr Expr
+    |Return SourcePos Expr 
     -- If ifel else block.
     -- condition internal_statement chained_condition_block
     -- else block have always true condition.
-    |If_chain [(Value, [Statement])]
+    |If_chain [(Expr, [Statement])]
     -- On block
     -- timing pre_condition post_condition internal_statements
-    |On Value Value Value [Statement]
+    |On Expr Expr Expr [Statement]
     |Undefined_statement
     deriving(Show)
 
 data Slice_range
-    =Slice_range Value Value 
-    |Slice_point Value
+    =Slice_range Expr Expr 
+    |Slice_point Expr
     deriving(Show)
 
-data Value 
+data Expr 
     =Bit_array_value    SourcePos Bit_width Bit_value
     |Meta_number_value  SourcePos Int Unit
     |Meta_string_value  SourcePos String
     |Id_value           SourcePos Identifier 
-    |Unaly_operator     SourcePos String Value
-    |Binaly_operator    SourcePos String Value Value
-    |Field_access       SourcePos Value Identifier 
-    |Slice_operator     SourcePos Value [Slice_range]
-    |Cat_operator       SourcePos [Value]
-    |Function_call      SourcePos Identifier [Value]
+    |Unaly_operator     SourcePos String Expr
+    |Binaly_operator    SourcePos String Expr Expr
+    |Field_access       SourcePos Expr Identifier 
+    |Slice_operator     SourcePos Expr [Slice_range]
+    |Cat_operator       SourcePos [Expr]
+    |Function_call      SourcePos Identifier [Expr]
     |Undefined_value
     deriving(Show)
 
@@ -277,7 +277,7 @@ lc_module_block = do
 --a on b -> c { ... }
 lc_on_block:: Token_parser [Statement]
 lc_on_block = do
-    tgt <- lc_value 
+    tgt <- lc_expression 
     s_token "on"
     s_token "posedge"
 
@@ -311,10 +311,10 @@ lc_if_block = lc_if_elif_block "if"
 --elif a {}
 lc_elif_block = lc_if_elif_block "elif"
 
-lc_if_elif_block:: String -> Token_parser (Value, [Statement])
+lc_if_elif_block:: String -> Token_parser (Expr, [Statement])
 lc_if_elif_block label = do
     s_token label
-    cond <- lc_value
+    cond <- lc_expression
     s_token "{"
     stmts <- many $ choice [
         try lc_if_elif_else_block,
@@ -324,7 +324,7 @@ lc_if_elif_block label = do
     return (cond, concat stmts)
 
 --else {}
-lc_else_block:: Token_parser (Value, [Statement])
+lc_else_block:: Token_parser (Expr, [Statement])
 lc_else_block = do
     s_token "else"
     s_token "{"
@@ -365,7 +365,7 @@ lc_variable_init id = do
     pos_eq <- getPosition
     s_token "="
     pos_val <- getPosition
-    r <- lc_value
+    r <- lc_expression
     return $ (:[]) $ Assign pos_eq (Id_value dummy_pos id) r
 
 -- T
@@ -383,10 +383,10 @@ lc_type= do
     return $ foldl Array_type base array_args
 
 -- part [a] of T[a] 
-lc_array_type_decolator:: Token_parser Value
+lc_array_type_decolator:: Token_parser Expr
 lc_array_type_decolator = do
     s_token "[";
-    s <- lc_value;
+    s <- lc_expression;
     s_token "]";
     return s
 
@@ -395,24 +395,24 @@ lc_return :: Token_parser [Statement]
 lc_return = do
     pos <- getPosition
     s_token "return"
-    v <- lc_value
+    v <- lc_expression
     s_token ";"
     return $ (:[]) $ Return pos v
 
 -- a = b;
 lc_assign::Token_parser [Statement]
 lc_assign = do 
-    l <- lc_value
+    l <- lc_expression
     pos <- getPosition
     s_token "="
-    r <- lc_value
+    r <- lc_expression
     s_token ";"
     return $ (:[]) $ Assign pos l r
 
 -- a ++;
 lc_incliment:: Token_parser [Statement]
 lc_incliment = do
-    v <- lc_value
+    v <- lc_expression
     pos <- getPosition
     s_token "++"
     s_token ";"
@@ -421,53 +421,53 @@ lc_incliment = do
                 (Bit_array_value dummy_pos 1 1))
 
 ----
---Value parsers
+--Expression parsers
 
 -- a
-lc_value:: Token_parser Value
-lc_value= do
-    value <- lc_value_with_prefix
-    option value (lc_value_postfix value)
+lc_expression:: Token_parser Expr
+lc_expression= do
+    expr <- lc_expression_with_prefix
+    option expr (lc_expression_postfix expr)
 
 -- a "+ b"
-lc_value_postfix:: Value -> Token_parser Value
-lc_value_postfix v = do
+lc_expression_postfix:: Expr -> Token_parser Expr
+lc_expression_postfix v = do
     v' <- choice[
         lc_binary_op v,
         lc_field_access v,
         lc_slice_op v]
-    option v' (lc_value_postfix v')
+    option v' (lc_expression_postfix v')
 
 --Statements with prefix operatores or/and braces.
-lc_value_with_prefix:: Token_parser Value
-lc_value_with_prefix = do
+lc_expression_with_prefix:: Token_parser Expr
+lc_expression_with_prefix = do
     choice [
         try lc_unaly_op, 
-        try $ between (s_token "(") (s_token ")") lc_value,
+        try $ between (s_token "(") (s_token ")") lc_expression,
         try lc_cat_op,
         try lc_function_call,
         try lc_variable,
         try lc_literal]
 
 -- a
-lc_variable:: Token_parser Value
+lc_variable:: Token_parser Expr
 lc_variable = do
     pos <- getPosition
     User_token name <- user_token
     return $ Id_value pos name
 
 -- f(a)
-lc_function_call:: Token_parser Value 
+lc_function_call:: Token_parser Expr 
 lc_function_call = do 
     pos <- getPosition
     User_token name <- user_token
     s_token "("
-    params <- sepBy1 lc_value (s_token ",")
+    params <- sepBy1 lc_expression (s_token ",")
     s_token ")"
     return $ Function_call pos name params
 
 -- 1'b1
-lc_literal:: Token_parser Value
+lc_literal:: Token_parser Expr
 lc_literal = do
     pos <- getPosition
     v <- literal_token
@@ -476,23 +476,23 @@ lc_literal = do
         (Meta_number_literal v u) -> return $ Meta_number_value pos v u
 
 -- -a
-lc_unaly_op::Token_parser Value
+lc_unaly_op::Token_parser Expr
 lc_unaly_op = do
     pos <- getPosition
     Symbol op <- unary_op 
-    val <- lc_value
+    val <- lc_expression
     return $ Unaly_operator pos op val
 
 --a + b
-lc_binary_op::Value -> Token_parser Value
+lc_binary_op::Expr -> Token_parser Expr
 lc_binary_op left = do
     pos <- getPosition
     Symbol op <- binary_op
-    right <- lc_value_with_prefix
+    right <- lc_expression_with_prefix
     return $ Binaly_operator pos op left right
 
 --a . b
-lc_field_access::Value -> Token_parser Value
+lc_field_access::Expr -> Token_parser Expr
 lc_field_access base= do
     pos <- getPosition
     s_token "."
@@ -500,15 +500,15 @@ lc_field_access base= do
     return $ Field_access pos base name
 
 --{a, b, c}
-lc_cat_op:: Token_parser Value
+lc_cat_op:: Token_parser Expr
 lc_cat_op = do 
     pos <- getPosition
     statements <- between (s_token "{") (s_token "}")
-        (sepBy1 lc_value (s_token ","))
+        (sepBy1 lc_expression (s_token ","))
     return $ Cat_operator pos statements
 
 --a[b:c, d]
-lc_slice_op:: Value -> Token_parser Value
+lc_slice_op:: Expr -> Token_parser Expr
 lc_slice_op v = do
     pos <- getPosition
     ranges <- between (s_token "[") (s_token "]")
@@ -524,15 +524,15 @@ lc_slice_range = choice [
 --Parse the part 'c' of x[a:b,c]
 lc_slice_range_s:: Token_parser Slice_range
 lc_slice_range_s = do
-    point <- lc_value
+    point <- lc_expression
     return $ Slice_point point 
 
 --Parse the part 'a:b' of x[a:b,c]
 lc_slice_range_d:: Token_parser Slice_range
 lc_slice_range_d = do
-    begin <- lc_value
+    begin <- lc_expression
     s_token ":"
-    end <- lc_value
+    end <- lc_expression
     return $ Slice_range begin end
 
 ----
