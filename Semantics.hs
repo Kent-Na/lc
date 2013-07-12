@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Semantics where
 
+import Token(Unit)
 import Parse
 import qualified Data.Map
 import Data.Map (Map, insert)
@@ -30,6 +31,10 @@ data S_type
 data S_value
     = Value_module    S_scope
     | Value_instance
+    | Value_metanum  Int Unit
+    --Value_bit_array n x is bit[n] = x
+    | Value_bit_array Int Int
+    --Array. [0, 1, .., n-1]
     | Value_array     [S_value]
     | Value_bit       S_logic
     | Value_logic     S_logic
@@ -37,8 +42,34 @@ data S_value
     deriving (Show)
 
 data S_logic = S_0 | S_1 | S_X | S_Z
+    deriving (Show)
     
 data S_object = S_object S_type S_value
+
+--Return Value_metanum with specified unit or Value_undefined if not
+--compatible with that type.
+cast_to_metanum :: S_value -> Unit -> S_value
+cast_to_metanum (Value_metanum v "") "" = Value_metanum v ""
+cast_to_metanum (Value_bit_array v l) "" = Value_metanum v ""
+cast_to_metanum _ _ = Value_undefined
+    
+to_value :: Int -> S_value
+to_value i = 
+        Value_array $ map ((Value_bit).bit_to_value) (f i)
+    where 
+        f :: Int -> [Int]
+        f 0 = [] 
+        f n = (n `mod` 2 ):f (n `div` 2)
+        bit_to_value 0 = S_0
+        bit_to_value 1 = S_1
+
+from_value :: S_value -> Int
+from_value (Value_array vals) = 
+    foldr1 (\a b -> b*2+a) (map bit_to_value vals)
+    where 
+        bit_to_value (Value_bit S_0) = 0
+        bit_to_value (Value_bit S_1) = 1
+
 ----
 --S_scope
 
@@ -83,10 +114,8 @@ register_type id t =
    mod_scope (\ (S_scope ids ts vs) -> S_scope ids (insert id t ts) vs) 
 
 register_value :: Identifier -> S_value -> Semantics()
-register_value id v = do
+register_value id v =
    mod_scope (\ (S_scope ids ts vs) -> S_scope ids ts (insert id v vs)) 
-   --put_error dummy_pos
-    --    ("(i)Value of id " ++ id ++ " was registered.")
 
 mod_error :: ([S_error] -> [S_error]) -> Semantics ()
 mod_error f = modify (\ (S_state env d err) -> S_state env d (f err))
@@ -102,6 +131,9 @@ put_error_if cond pos message=
 
 put_error :: SourcePos -> String -> Semantics ()
 put_error = put_error_if True
+
+put_info :: String -> Semantics()
+put_info = put_error dummy_pos
 
 pos_str :: SourcePos -> String
 pos_str pos = 
@@ -127,13 +159,20 @@ id_of _ = "unknown_id"
 type_of :: Statement -> Semantics S_type
 type_of (Define _ _ (Module _)) = return $ Type_module
 type_of (Define _ _ _)          = return $ Type_undefined 
-type_of (Instantiate _ t _ _)   = 
+type_of (Instantiate pos t _ _)   = 
     conv t
     where 
         conv :: Type -> Semantics S_type
         conv (Array_type t length_val) = do
             t' <- conv t
-            return $ Type_array 0 t'
+            len <- solve_expr_value length_val
+            case cast_to_metanum len "" of
+                (Value_metanum len' "") ->
+                    return $ Type_array len' t';
+                _ -> do
+                    put_error pos 
+                       "Length of array must be compile tyme calcuratable." 
+                    return Type_undefined
         conv (Unresolved_type "bit")   = return $ Type_bit
         conv (Unresolved_type "logic") = return $ Type_logic
         conv (Unresolved_type t_id)    = return $ Type_instance t_id
@@ -145,8 +184,8 @@ is_array_of base t = (base == t)
 
 --Find type in specified scope. Return Type_undefined if it was not
 --defined.
-solve_type_in :: S_scope -> Identifier -> Semantics S_type
-solve_type_in (S_scope ids tps _) id = do
+solve_id_type_in :: S_scope -> Identifier -> Semantics S_type
+solve_id_type_in (S_scope ids tps _) id = do
     case Data.Map.lookup id tps of
         (Just t)  -> return t
         (Nothing) -> case Data.Map.lookup id ids of
@@ -161,13 +200,13 @@ solve_type_in (S_scope ids tps _) id = do
 
 --Find type in current enviroment.
 --todo: Recursive search
-solve_type :: Identifier -> Semantics S_type
-solve_type id = do
+solve_id_type :: Identifier -> Semantics S_type
+solve_id_type id = do
     scope  <- get_scope
-    solve_type_in scope id
+    solve_id_type_in scope id
 
-solve_value :: Identifier -> Semantics S_value
-solve_value id = do
+solve_id_value :: Identifier -> Semantics S_value
+solve_id_value id = do
     S_scope ids tps vs <- get_scope
     case Data.Map.lookup id vs of
         (Just v)  -> return v
@@ -267,10 +306,8 @@ is_type_correct (Assign pos lval rval) = do
     put_error_if (ltype /= rtype) pos 
         ("Type missmatch. Left and right value of assignment " ++
          "must be same type.")
-    --put_error pos 
-        --("type(lvalue) = " ++ (show ltype))
-    --put_error pos 
-        --("type(rvalue) = " ++ (show rtype))
+    --put_error pos ("type(lvalue) = " ++ (show ltype))
+    --put_error pos ("type(rvalue) = " ++ (show rtype))
 is_type_correct _ = 
     return ()
 
@@ -289,7 +326,7 @@ solve_expr_type :: Expr -> Semantics S_type
 solve_expr_type (Bit_array_value pos l v) = 
     return $ Type_array l Type_bit
 solve_expr_type (Id_value pos id) = do
-    solve_type id
+    solve_id_type id
 solve_expr_type (Unaly_operator pos op val) = do
     val_type <- solve_expr_type val
     case op of
@@ -310,17 +347,18 @@ solve_expr_type (Field_access pos val id) = do
     val_type <- solve_expr_type val
     case val_type of
         Type_instance t_id -> do
-            t_value <- solve_value t_id
+            t_value <- solve_id_value t_id
             --t_value is type Expr of val
             case t_value of
                 Value_module scope ->
-                    solve_type_in scope id
+                    solve_id_type_in scope id
                 _ -> do
                     put_error dummy_pos "(i)Fail at type."
                     return Type_undefined 
         _ -> do
             put_error dummy_pos "(i)Fail at type value."
             return Type_undefined 
+
 {-
 solve_expr_type (Binaly_operator _ _ lval rval) = do
     test_id_value lval
@@ -341,6 +379,14 @@ solve_expr_type (Function_call pos id vals) = do
 solve_expr_type _ = return ()
 -}
 
+solve_expr_value :: Expr -> Semantics S_value
+solve_expr_value (Bit_array_value _ l v) = 
+    return $ Value_bit_array l v
+solve_expr_value (Meta_number_value _ v u) = 
+    return $ Value_metanum v u
+solve_expr_value (Id_value _ id) = do
+    solve_id_value id
+
 with_new_scope :: S_scope -> Semantics a -> Semantics S_scope
 with_new_scope scope sem = do
     push_env scope
@@ -359,10 +405,6 @@ statements stmts = do
         process_stmt (Define pos id (Module sub_stmts)) = do
             scope <- semantics sub_stmts
             register_value id (Value_module scope)
-            val <- solve_value id
-            --put_error dummy_pos
-             --   ("(i)Expr of id " ++ id ++ " : " ++
-              --   (show val) ++ " was registered.")
             return ()
         process_stmt _ = 
             return ()
