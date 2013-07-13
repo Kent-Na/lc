@@ -26,6 +26,7 @@ data S_type
     | Type_bit
     | Type_logic
     | Type_undefined
+    | Type_invalid
     deriving (Show, Eq)
 
 data S_value
@@ -38,7 +39,10 @@ data S_value
     | Value_array     [S_value]
     | Value_bit       S_logic
     | Value_logic     S_logic
+    --Value of not defined id.
     | Value_undefined
+    --Vaule of invalid expressions result like NaN.
+    | Value_invalid
     deriving (Show)
 
 data S_logic = S_0 | S_1 | S_X | S_Z
@@ -51,7 +55,7 @@ data S_object = S_object S_type S_value
 cast_to_metanum :: S_value -> Unit -> S_value
 cast_to_metanum (Value_metanum v "") "" = Value_metanum v ""
 cast_to_metanum (Value_bit_array v l) "" = Value_metanum v ""
-cast_to_metanum _ _ = Value_undefined
+cast_to_metanum _ _ = Value_invalid
     
 to_value :: Int -> S_value
 to_value i = 
@@ -158,7 +162,7 @@ id_of _ = "unknown_id"
 
 type_of :: Statement -> Semantics S_type
 type_of (Define _ _ (Module _)) = return $ Type_module
-type_of (Define _ _ _)          = return $ Type_undefined 
+type_of (Define _ _ _)          = return $ Type_invalid
 type_of (Instantiate pos t _ _)   = 
     conv t
     where 
@@ -172,7 +176,7 @@ type_of (Instantiate pos t _ _)   =
                 _ -> do
                     put_error pos 
                        "Length of array must be compile tyme calcuratable." 
-                    return Type_undefined
+                    return Type_invalid
         conv (Unresolved_type "bit")   = return $ Type_bit
         conv (Unresolved_type "logic") = return $ Type_logic
         conv (Unresolved_type t_id)    = return $ Type_instance t_id
@@ -186,17 +190,20 @@ is_array_of base t = (base == t)
 --defined.
 solve_id_type_in :: S_scope -> Identifier -> Semantics S_type
 solve_id_type_in (S_scope ids tps _) id = do
+    --put_info (show tps)
+    --put_info id
     case Data.Map.lookup id tps of
         (Just t)  -> return t
-        (Nothing) -> case Data.Map.lookup id ids of
-            (Just stmt) -> do
-                out_type <- type_of stmt
-                register_type id out_type
-                return out_type
-            (Nothing)   -> (put_error dummy_pos
-                ("(i)Missing type definition of id " ++ id ++ ".")) >>
-                (put_error dummy_pos ("(i)s = " ++ (show ids))) >>
-                return Type_undefined
+        --(Nothing) -> case Data.Map.lookup id ids of
+            --(Just stmt) -> do
+                --out_type <- type_of stmt
+                --Need to register type to target scope, not to current.
+                --register_type id out_type
+                --return out_type
+        (Nothing)   -> (put_error dummy_pos
+            ("(i)Missing type definition of id " ++ id ++ ".")) >>
+                --(put_error dummy_pos ("(i)s = " ++ (show ids))) >>
+            return Type_undefined
 
 --Find type in current enviroment.
 --todo: Recursive search
@@ -334,12 +341,12 @@ solve_expr_type (Unaly_operator pos op val) = do
             (_) | is_array_of Type_bit val_type-> return Type_bit
             (_) -> put_error pos 
                 ("Type missmatch. Operand of unaly operator " ++ op ++
-                 " must be bit array") >> return Type_undefined
+                 " must be bit array") >> return Type_invalid
         (_) | is_to_bit_a op -> case val_type of
             (_) | is_array_of Type_bit val_type -> return $ val_type
             (_) -> put_error pos 
                 ("Type missmatch. Operand of unaly operator " ++ op ++
-                 " must be bit array") >> return Type_undefined
+                 " must be bit array") >> return Type_invalid
     where
         is_to_bit   op = elem op ["&", "|", "^"]
         is_to_bit_a op = elem op ["~", "-"]
@@ -350,14 +357,17 @@ solve_expr_type (Field_access pos val id) = do
             t_value <- solve_id_value t_id
             --t_value is type Expr of val
             case t_value of
-                Value_module scope ->
-                    solve_id_type_in scope id
+                Value_module scope -> do
+                    result <- solve_id_type_in scope id
+                    put_error_if (result == Type_undefined)
+                        pos ("No field named " ++ id ++ ".")
+                    return result
                 _ -> do
-                    put_error dummy_pos "(i)Fail at type."
-                    return Type_undefined 
+                    put_error pos "(i)Fail at type."
+                    return Type_invalid
         _ -> do
-            put_error dummy_pos "(i)Fail at type value."
-            return Type_undefined 
+            put_error pos "(i)Fail at type value."
+            return Type_invalid
 
 {-
 solve_expr_type (Binaly_operator _ _ lval rval) = do
@@ -406,6 +416,9 @@ statements stmts = do
             scope <- semantics sub_stmts
             register_value id (Value_module scope)
             return ()
+        process_stmt (Instantiate pos tp id mods) = do
+            out_type <- type_of (Instantiate pos tp id mods)
+            register_type id out_type
         process_stmt _ = 
             return ()
 

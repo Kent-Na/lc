@@ -25,7 +25,6 @@ m2 : module{
 }
 
 m3 : module{
-    //a.a.a = 8'b0;
     m3_0 : module{
         m3_1 a;
         bit[8] b;
@@ -36,6 +35,9 @@ m3 : module{
     }
 
     m3_0 a;
+    a.b = 8'b1111_1111;
     a.a.a = 8'b0;
+
+    a = 4'b0000;
+    a.c = 4'hc;
 }
-    
