@@ -186,40 +186,51 @@ is_array_of :: S_type -> S_type -> Bool
 is_array_of base (Type_array _ t) = (base == t)
 is_array_of base t = (base == t) 
 
+length_of :: S_type -> Int
+length_of (Type_array l _) = l
+length_of _ = 1
+
 --Find type in specified scope. Return Type_undefined if it was not
 --defined.
 solve_id_type_in :: S_scope -> Identifier -> Semantics S_type
 solve_id_type_in (S_scope ids tps _) id = do
-    --put_info (show tps)
-    --put_info id
     case Data.Map.lookup id tps of
         (Just t)  -> return t
-        --(Nothing) -> case Data.Map.lookup id ids of
-            --(Just stmt) -> do
-                --out_type <- type_of stmt
-                --Need to register type to target scope, not to current.
-                --register_type id out_type
-                --return out_type
-        (Nothing)   -> (put_error dummy_pos
-            ("(i)Missing type definition of id " ++ id ++ ".")) >>
-                --(put_error dummy_pos ("(i)s = " ++ (show ids))) >>
-            return Type_undefined
+        (Nothing) -> return Type_undefined
 
+solve_id_type_in_env :: Enviroment -> Identifier -> Semantics S_type
+solve_id_type_in_env [] id = 
+    return Type_undefined
+solve_id_type_in_env (s:sx) id = do
+    t <- solve_id_type_in s id
+    case t of 
+        Type_undefined -> solve_id_type_in_env sx id
+        t              -> return t
+    
 --Find type in current enviroment.
---todo: Recursive search
 solve_id_type :: Identifier -> Semantics S_type
 solve_id_type id = do
-    scope  <- get_scope
-    solve_id_type_in scope id
+    env  <- get_env
+    solve_id_type_in_env env id
 
+solve_id_value_in :: S_scope -> Identifier -> Semantics S_value
+solve_id_value_in (S_scope ids _ vals) id = do
+    case Data.Map.lookup id vals of
+        (Just t)  -> return t
+        (Nothing) -> return Value_undefined
+
+solve_id_value_in_env :: Enviroment -> Identifier -> Semantics S_value
+solve_id_value_in_env [] id = 
+    return Value_undefined
+solve_id_value_in_env (s:sx) id = do
+    t <- solve_id_value_in s id
+    case t of 
+        Value_undefined -> solve_id_value_in_env sx id
+        t               -> return t
 solve_id_value :: Identifier -> Semantics S_value
 solve_id_value id = do
-    S_scope ids tps vs <- get_scope
-    case Data.Map.lookup id vs of
-        (Just v)  -> return v
-        (Nothing) -> (put_error dummy_pos
-            ("(i)Missing value definition of id " ++ id ++ ".")) >>
-            return Value_undefined
+    env  <- get_env
+    solve_id_value_in_env env id
 
 identifier_map :: [Statement] -> Id_map
 identifier_map stmts = 
@@ -308,13 +319,17 @@ test_id_value _ = return ()
 
 is_type_correct :: Statement -> Semantics ()
 is_type_correct (Assign pos lval rval) = do
-    ltype <- solve_expr_type lval
-    rtype <- solve_expr_type rval
+    ltype <- liftM type_hack $ solve_expr_type lval
+    rtype <- liftM type_hack $ solve_expr_type rval
     put_error_if (ltype /= rtype) pos 
         ("Type missmatch. Left and right value of assignment " ++
          "must be same type.")
     --put_error pos ("type(lvalue) = " ++ (show ltype))
     --put_error pos ("type(rvalue) = " ++ (show rtype))
+    where
+        type_hack :: S_type -> S_type
+        type_hack Type_bit = Type_array 1 Type_bit
+        type_hack t        = t 
 is_type_correct _ = 
     return ()
 
@@ -336,20 +351,40 @@ solve_expr_type (Id_value pos id) = do
     solve_id_type id
 solve_expr_type (Unaly_operator pos op val) = do
     val_type <- solve_expr_type val
-    case op of
-        (_) | is_to_bit op -> case val_type of
-            (_) | is_array_of Type_bit val_type-> return Type_bit
-            (_) -> put_error pos 
+    case () of
+        -- ^ & |
+        _ | is_to_bit op -> case () of
+            _ | is_array_of Type_bit val_type-> return Type_bit
+            _ -> put_error pos 
                 ("Type missmatch. Operand of unaly operator " ++ op ++
                  " must be bit array") >> return Type_invalid
-        (_) | is_to_bit_a op -> case val_type of
-            (_) | is_array_of Type_bit val_type -> return $ val_type
-            (_) -> put_error pos 
+        -- ~ -
+        _ | is_to_bit_a op -> case () of
+            _ | is_array_of Type_bit val_type -> return $ val_type
+            _ -> put_error pos 
                 ("Type missmatch. Operand of unaly operator " ++ op ++
                  " must be bit array") >> return Type_invalid
+        _ -> put_error pos ("Unknown op " ++ op ++ ".") >> 
+            return Type_invalid
     where
         is_to_bit   op = elem op ["&", "|", "^"]
         is_to_bit_a op = elem op ["~", "-"]
+
+solve_expr_type (Binaly_operator pos op lval rval) = do
+    ltype <- liftM type_hack $ solve_expr_type lval
+    rtype <- liftM type_hack $ solve_expr_type rval
+    case () of
+        _ | is_logical_op op -> logical_bi_op pos op ltype rtype
+        _ | is_alithmetic_op op -> alithmetic_bi_op pos op ltype rtype
+        _ -> put_error pos ("Unknown binaly operator " ++ op ++ ".") >>
+            return Type_invalid
+    where
+        is_logical_op op = elem op ["&", "^", "|"]
+        is_alithmetic_op op = elem op ["+", "-"]
+        type_hack :: S_type -> S_type
+        type_hack Type_bit = Type_array 1 Type_bit
+        type_hack t        = t 
+
 solve_expr_type (Field_access pos val id) = do
     val_type <- solve_expr_type val
     case val_type of
@@ -368,6 +403,28 @@ solve_expr_type (Field_access pos val id) = do
         _ -> do
             put_error pos "(i)Fail at type value."
             return Type_invalid
+
+logical_bi_op pos op ltype rtype =
+    case (ltype,rtype) of
+        (Type_array ll Type_bit, Type_array lr Type_bit) | ll == lr ->
+            return $ Type_array ll Type_bit
+        _ ->
+            put_error pos 
+                ("Type missmatch. Operand of binaly operator " ++ op ++
+                 " must be bit array with same length.") >>
+                 put_info (show ltype) >>
+                 put_info (show rtype) >>
+                 return Type_invalid
+
+alithmetic_bi_op pos op ltype rtype = do
+    case (ltype,rtype) of
+        (Type_array ll Type_bit, Type_array lr Type_bit) ->
+            return $ Type_array (max ll lr) Type_bit
+        _ ->
+            put_error pos 
+                ("Type missmatch. Operand of binaly operator " ++ op ++
+                 " must be bit array.") >>
+             return Type_invalid
 
 {-
 solve_expr_type (Binaly_operator _ _ lval rval) = do
