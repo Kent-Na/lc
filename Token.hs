@@ -54,8 +54,10 @@ white_space = space <|> newline <|> tab
 
 skip_white_space = skipMany white_space
 
-double_char_symbol = ["->", "=>", "==", ">>", "<<", "++", "--"]
-single_char_symbol = [":", "=", "{", "}", "[", "]", ",", "(", ")"] ++
+double_char_symbol = 
+    ["->", "=>", "==", "!=", ">>", "<<", "++", "--", "<=", ">=", "<>"]
+single_char_symbol = 
+    [":", "=", "{", "}", "[", "]", ",", "(", ")", "<", ">"] ++
 	["+", "-", "*", "/", "^", ".", ";", "&", "|", "~"]
 
 

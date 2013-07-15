@@ -92,7 +92,7 @@ s_token s =
     f (parse lc_token "" s)
     where 
         f (Right (pos, tok)) = satisfy_token (== tok) <?> s
-        f (Left _ ) = unexpected "bad token (bug in compiler)"
+        f (Left _ ) = unexpected ("bad token (bug in compiler) " ++ s)
 
 --Core data structures
 
