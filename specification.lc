@@ -58,20 +58,26 @@ auto //(from c++11)
 - //negate (bit[n] -> bit[n])
 
 //binary operator
-+ //add (bit[n] -> bit[n] -> bit[n])
-- //sub (bit[n] -> bit[n] -> bit[n])
 * //mul
 / //div
 
++ //add (bit[n] -> bit[n] -> bit[n])
+- //sub (bit[n] -> bit[n] -> bit[n])
+
 & //and (bit[n] -> bit[n] -> bit[n])
+
 | //or  (bit[n] -> bit[n] -> bit[n])
 ^ //xor (bit[n] -> bit[n] -> bit[n])
 
-== //equal     (bit[n] -> bit[n] -> bit)
-!= //not equal (bit[n] -> bit[n] -> bit)
-
 <> //bit concatinate (bit[n] -> bit[m] -> bit[n+m])
    //ex. 2'b01 <> 2'b11 => 4'b0111
+
+== //equal     (bit[n] -> bit[n] -> bit)
+!= //not equal (bit[n] -> bit[n] -> bit)
+<  // less
+<= //
+>  //
+>= //
 
 //bit concatinate
 {a, b, c}  //a <> b <> c
@@ -83,7 +89,7 @@ a[4:8] // = {a[4],a[5],a[6],a[7]}
 a[4,8] // = {a[4],a[8]}
 a[4:6,8] // = {a[4],a[5],a[8]}
 
-//assign
+//assign(statement, no return value.)
 = // right to left
 =[metatime] //delayed assign
 
@@ -94,6 +100,21 @@ a =[5ns] b; //Signal "a" forrow signal "b" with 5ns delay
 //**-> // left to right
 //**<-[metatime] //delayed assign (simration only)
 
+
+///
+
+// 00 () {}
+// 01 . f(x) .{} []
+// 02 unaly operators
+// 03 * /
+// 04 + -
+// 05 &
+// 06 | ^
+// 07 <>
+// 08 == != < <= > >=
+
+//note: (a == b & c == d) will be interpreted as (a == (b & c) == d).
+//Looks problematic
 
 ////
 //Struct

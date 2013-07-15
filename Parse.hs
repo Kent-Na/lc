@@ -94,16 +94,6 @@ s_token s =
         f (Right (pos, tok)) = satisfy_token (== tok) <?> s
         f (Left _ ) = unexpected "bad token (bug in compiler)"
 
-unary_op :: Token_parser Token
-unary_op = choice (map s_token ["+", "-", "&", "|", "~"]) <?>
-    "unary operator"
-
-binary_op :: Token_parser Token
-binary_op = choice (map s_token 
-    ["+", "-", "^", "&", "|", "==", ">>"]) <?>
-    "binary operator"
-
-----
 --Core data structures
 
 type Unresolved_id = String
@@ -277,7 +267,7 @@ lc_module_block = do
 --a on b -> c { ... }
 lc_on_block:: Token_parser [Statement]
 lc_on_block = do
-    tgt <- lc_expression 
+    tgt <- lc_expression 100
     s_token "on"
     s_token "posedge"
 
@@ -314,7 +304,7 @@ lc_elif_block = lc_if_elif_block "elif"
 lc_if_elif_block:: String -> Token_parser (Expr, [Statement])
 lc_if_elif_block label = do
     s_token label
-    cond <- lc_expression
+    cond <- lc_expression 100
     s_token "{"
     stmts <- many $ choice [
         try lc_if_elif_else_block,
@@ -365,7 +355,7 @@ lc_variable_init id = do
     pos_eq <- getPosition
     s_token "="
     pos_val <- getPosition
-    r <- lc_expression
+    r <- lc_expression 100
     return $ (:[]) $ Assign pos_eq (Id_value dummy_pos id) r
 
 -- T
@@ -385,9 +375,9 @@ lc_type= do
 -- part [a] of T[a] 
 lc_array_type_decolator:: Token_parser Expr
 lc_array_type_decolator = do
-    s_token "[";
-    s <- lc_expression;
-    s_token "]";
+    s_token "["
+    s <- lc_expression 100
+    s_token "]"
     return s
 
 -- return a;
@@ -395,24 +385,24 @@ lc_return :: Token_parser [Statement]
 lc_return = do
     pos <- getPosition
     s_token "return"
-    v <- lc_expression
+    v <- lc_expression 100
     s_token ";"
     return $ (:[]) $ Return pos v
 
 -- a = b;
 lc_assign::Token_parser [Statement]
 lc_assign = do 
-    l <- lc_expression
+    l <- lc_expression 100
     pos <- getPosition
     s_token "="
-    r <- lc_expression
+    r <- lc_expression 100
     s_token ";"
     return $ (:[]) $ Assign pos l r
 
 -- a ++;
 lc_incliment:: Token_parser [Statement]
 lc_incliment = do
-    v <- lc_expression
+    v <- lc_expression 100
     pos <- getPosition
     s_token "++"
     s_token ";"
@@ -423,31 +413,45 @@ lc_incliment = do
 ----
 --Expression parsers
 
+type P_level = Int
+
+require :: Bool -> Token_parser ()
+require cond = req cond $ return ()
+
+req :: Bool -> Token_parser a -> Token_parser a
+req cond base = 
+    if cond then try base else parserZero
+
 -- a
-lc_expression:: Token_parser Expr
-lc_expression= do
-    expr <- lc_expression_with_prefix
-    option expr (lc_expression_postfix expr)
+lc_expression:: P_level -> Token_parser Expr
+lc_expression lv = do
+    expr <- lc_expression_with_prefix lv
+    option expr (lc_expression_postfix lv expr)
 
 -- a "+ b"
-lc_expression_postfix:: Expr -> Token_parser Expr
-lc_expression_postfix v = do
+lc_expression_postfix:: P_level ->Expr -> Token_parser Expr
+lc_expression_postfix lv v = do
     v' <- choice[
-        lc_binary_op v,
-        lc_field_access v,
-        lc_slice_op v]
-    option v' (lc_expression_postfix v')
+        req (lv>1) $ lc_field_access v,
+        req (lv>3) $ lc_binary_op v 3 ["*", "/"],
+        req (lv>4) $ lc_binary_op v 4 ["+", "-"],
+        req (lv>5) $ lc_binary_op v 5 ["&"],
+        req (lv>6) $ lc_binary_op v 6 ["|", "^"],
+        req (lv>7) $ lc_binary_op v 7 ["<>"],
+        req (lv>8) $ lc_binary_op v 8 ["==", "!=", "<", "<=", ">", ">="],
+        req (lv>1) $ lc_slice_op v]
+    option v' (lc_expression_postfix lv v')
 
 --Statements with prefix operatores or/and braces.
-lc_expression_with_prefix:: Token_parser Expr
-lc_expression_with_prefix = do
+lc_expression_with_prefix:: P_level -> Token_parser Expr
+lc_expression_with_prefix lv = do
     choice [
-        try lc_unaly_op, 
-        try $ between (s_token "(") (s_token ")") lc_expression,
-        try lc_cat_op,
-        try lc_function_call,
-        try lc_variable,
-        try lc_literal]
+        try $ lc_variable,
+        try $ lc_literal,
+        try $ between (s_token "(") (s_token ")") (lc_expression 100),
+        req (lv>2) $ lc_unaly_op 2, 
+        req (lv>0) $ lc_cat_op,
+        req (lv>1) $ lc_function_call]
 
 -- a
 lc_variable:: Token_parser Expr
@@ -462,7 +466,7 @@ lc_function_call = do
     pos <- getPosition
     User_token name <- user_token
     s_token "("
-    params <- sepBy1 lc_expression (s_token ",")
+    params <- sepBy1 (lc_expression 100) (s_token ",")
     s_token ")"
     return $ Function_call pos name params
 
@@ -475,21 +479,30 @@ lc_literal = do
         (Bit_array_literal w v)   -> return $ Bit_array_value pos w v
         (Meta_number_literal v u) -> return $ Meta_number_value pos v u
 
+----
 -- -a
-lc_unaly_op::Token_parser Expr
-lc_unaly_op = do
+lc_unaly_op:: P_level -> Token_parser Expr
+lc_unaly_op lv = do
     pos <- getPosition
     Symbol op <- unary_op 
-    val <- lc_expression
+    val <- lc_expression lv
     return $ Unaly_operator pos op val
+	where
+		unary_op :: Token_parser Token
+		unary_op = choice (map s_token ["+", "-", "&", "|", "~"]) <?>
+			"unary operator"
 
 --a + b
-lc_binary_op::Expr -> Token_parser Expr
-lc_binary_op left = do
+lc_binary_op::Expr -> P_level -> [String] -> Token_parser Expr
+lc_binary_op left lv ops = do
     pos <- getPosition
     Symbol op <- binary_op
-    right <- lc_expression_with_prefix
+    right <- lc_expression lv
+	--_with_prefix
     return $ Binaly_operator pos op left right
+	where
+		binary_op :: Token_parser Token
+		binary_op = choice (map s_token ops) <?> "binary operator"
 
 --a . b
 lc_field_access::Expr -> Token_parser Expr
@@ -504,7 +517,7 @@ lc_cat_op:: Token_parser Expr
 lc_cat_op = do 
     pos <- getPosition
     statements <- between (s_token "{") (s_token "}")
-        (sepBy1 lc_expression (s_token ","))
+        (sepBy1 (lc_expression 100) (s_token ","))
     return $ Cat_operator pos statements
 
 --a[b:c, d]
@@ -524,15 +537,15 @@ lc_slice_range = choice [
 --Parse the part 'c' of x[a:b,c]
 lc_slice_range_s:: Token_parser Slice_range
 lc_slice_range_s = do
-    point <- lc_expression
+    point <- lc_expression 100
     return $ Slice_point point 
 
 --Parse the part 'a:b' of x[a:b,c]
 lc_slice_range_d:: Token_parser Slice_range
 lc_slice_range_d = do
-    begin <- lc_expression
+    begin <- lc_expression 100
     s_token ":"
-    end <- lc_expression
+    end <- lc_expression 100
     return $ Slice_range begin end
 
 ----
@@ -548,3 +561,4 @@ kilo_assign= "{lval_a[idx_a, idx_b:idx_c], lval_b} = " ++
 	"r_val_a+r_val_b-r_val_c;"
 mega_assign= "{lval_a[2, 12:16], lval_b} = " ++
 	"{r_val_a,r_val_b}[3]-r_val_c;"
+mega_expr = "a*b|c+d==e&f+g"
